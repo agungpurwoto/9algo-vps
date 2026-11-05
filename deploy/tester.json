@@ -1,0 +1,67 @@
+{
+ "id": "base-1",
+ "note": "baseline 9algo v2.87 per simbol, risk preset x1 (ChallengeMode off), M1 OHLC",
+ "file": "src/9algo.mq5",
+ "jobs": [
+  {
+   "name": "base_XAUUSD",
+   "symbol": "XAUUSD",
+   "from": "2024.01.01",
+   "to": "2026.10.31",
+   "period": "H1",
+   "model": 1,
+   "deposit": 2500,
+   "timeout_min": 240,
+   "inputs": {
+    "UsePresetTerbaru": "false",
+    "I_ChallengeMode": "false"
+   },
+   "file": "src/9algo.mq5"
+  },
+  {
+   "name": "base_XAGUSD",
+   "symbol": "XAGUSD",
+   "from": "2024.01.01",
+   "to": "2026.10.31",
+   "period": "H1",
+   "model": 1,
+   "deposit": 2500,
+   "timeout_min": 240,
+   "inputs": {
+    "UsePresetTerbaru": "false",
+    "I_ChallengeMode": "false"
+   },
+   "file": "src/9algo.mq5"
+  },
+  {
+   "name": "base_USDJPY",
+   "symbol": "USDJPY",
+   "from": "2024.01.01",
+   "to": "2026.10.31",
+   "period": "H1",
+   "model": 1,
+   "deposit": 2500,
+   "timeout_min": 240,
+   "inputs": {
+    "UsePresetTerbaru": "false",
+    "I_ChallengeMode": "false"
+   },
+   "file": "src/9algo.mq5"
+  },
+  {
+   "name": "base_NAS100",
+   "symbol": "NAS100",
+   "from": "2024.01.01",
+   "to": "2026.10.31",
+   "period": "H1",
+   "model": 1,
+   "deposit": 2500,
+   "timeout_min": 240,
+   "inputs": {
+    "UsePresetTerbaru": "false",
+    "I_ChallengeMode": "false"
+   },
+   "file": "src/9algo.mq5"
+  }
+ ]
+}

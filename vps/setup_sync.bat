@@ -1,7 +1,7 @@
 @echo off
 title 9algo sync - setup
 REM ================================================================
-REM 9algo VPS <-> GitHub sync. Dobel klik sekali; setelah itu jalan otomatis tiap login VPS.
+REM 9algo VPS <-> GitHub sync (+ backtest otomatis). Dobel klik; setelah itu jalan otomatis tiap login VPS.
 REM ================================================================
 cd /d "%~dp0"
 set TLS=[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12;
@@ -23,26 +23,18 @@ if not exist "%PY%" (
   exit /b 1
 )
 
-REM --- konfigurasi (sekali)
-if not exist sync_config.json (
-  echo.
-  echo Isi 3 data berikut ^(lihat petunjuk dari Claude^):
-  set /p GHOWNER=  1. Username GitHub kamu         : 
-  set /p GHREPO=  2. Nama repo ^(mis. 9algo-vps^)    : 
-  set /p GHTOKEN=  3. Token GitHub ^(github_pat_...^): 
-)
-if not exist sync_config.json (
-  "%PY%" -c "import json,sys; json.dump({'owner':sys.argv[1].strip(),'repo':sys.argv[2].strip(),'token':sys.argv[3].strip(),'interval':90,'allow_deploy':True}, open('sync_config.json','w'), indent=1)" "%GHOWNER%" "%GHREPO%" "%GHTOKEN%"
-)
+REM --- matikan sync lama kalau masih jalan (supaya tidak dobel)
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*9algo_sync.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }" >nul 2>nul
+
+REM --- konfigurasi (hanya menanyakan yang belum ada)
+"%PY%" "%~dp0setup_config.py"
 
 REM --- jalan otomatis tiap login (Task Scheduler)
 schtasks /create /f /sc onlogon /tn "9algo_sync" /tr "\"%PY%\" \"%~dp09algo_sync.py\"" >nul 2>nul
-if errorlevel 1 (echo [i] Gagal daftar Task Scheduler - sync tetap jalan sekarang, tapi setelah VPS restart jalankan setup_sync.bat lagi.) else (echo [OK] Sync otomatis jalan tiap login VPS.)
+if errorlevel 1 (echo [i] Gagal daftar Task Scheduler - setelah VPS restart jalankan setup_sync.bat lagi.) else (echo [OK] Sync otomatis jalan tiap login VPS.)
 
-REM --- jalan sekarang di jendela ini
 echo.
 echo Sync berjalan. Jendela ini boleh di-minimize, JANGAN ditutup.
-echo Ganti token/repo: hapus sync_config.json lalu jalankan file ini lagi.
 echo.
 "%PY%" "%~dp09algo_sync.py"
 pause
