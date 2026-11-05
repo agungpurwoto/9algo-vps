@@ -28,7 +28,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.2"
+VERSION = "1.3"
 
 
 def log(msg):
@@ -345,6 +345,9 @@ def ensure_tester():
         raise RuntimeError("folder instalasi MT5 tidak ditemukan untuk membuat terminal tester")
     log(f"menyalin MT5 {inst} -> {td} (sekali saja)")
     shutil.copytree(inst, td, dirs_exist_ok=True)
+    # tanpa password di config: pakai login tersimpan terminal live (folder config) supaya tester bisa ambil data broker
+    if d and (d / "config").is_dir():
+        shutil.copytree(d / "config", td / "config", dirs_exist_ok=True)
     return td
 
 
@@ -397,8 +400,9 @@ def run_tester_job(td: Path, job: dict, creds: dict):
             (td / (rep_rel + ext)).unlink()
         except Exception:
             pass
-    ini = "\n".join([
-        "[Common]", f"Login={creds['login']}", f"Password={creds['password']}", f"Server={creds['server']}", "",
+    common = ["[Common]", f"Login={creds['login']}", f"Password={creds['password']}", f"Server={creds['server']}", ""] \
+        if creds.get("password") else []                    # tanpa password: pakai login tersimpan (folder config)
+    ini = "\n".join(common + [
         "[Tester]", f"Expert=9algo_test\\{name}.ex5", f"ExpertParameters={name}.set",
         f"Symbol={job['symbol']}", f"Period={job.get('period', 'H1')}", f"Model={job.get('model', 1)}",
         f"FromDate={job['from']}", f"ToDate={job['to']}", f"Deposit={job.get('deposit', 2500)}", "Currency=USD",
@@ -430,10 +434,7 @@ def run_tester_job(td: Path, job: dict, creds: dict):
 
 def tester_worker(req, state):
     try:
-        creds = CFG.get("tester")
-        if not creds or not creds.get("password"):
-            TESTER["results"] = [{"id": req["id"], "ok": False, "error": "login tester belum diisi (jalankan setup_sync.bat versi baru)"}]
-            return
+        creds = CFG.get("tester") or {}
         td = ensure_tester()
         res = []
         for job in req.get("jobs", []):
@@ -465,7 +466,8 @@ def check_tester(state):
 
 def tester_status():
     return {"running": TESTER["running"], "results": [{k: v for k, v in r.items() if k != "deals"} for r in TESTER["results"]],
-            "configured": bool((CFG.get("tester") or {}).get("password")), "dir": str(tester_dir())}
+            "login": "password investor" if (CFG.get("tester") or {}).get("password") else "login tersimpan terminal live",
+            "dir": str(tester_dir())}
 
 
 def main():
