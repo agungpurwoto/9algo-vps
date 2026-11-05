@@ -26,7 +26,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "9algo by Singularity"
 #property link        "https://singularity.id"
-#property version     "2.86"
+#property version     "2.87"
 #property description "9algo by Singularity - 9 algoritma dalam 1 EA untuk XAUUSD, XAGUSD, USDJPY, NQ"
 #property description "Prop-firm guard: Max Daily Loss, Max Loss (trailing HWM), cap total risk, panel target & statistik"
 #include <Trade\Trade.mqh>
@@ -128,6 +128,8 @@ input bool            PushAlerts            = true;   // Push notification: guar
 input group "=== Filter News (kalender ekonomi MT5) ==="
 input bool            I_NewsFilter            = true;   // Blok entry baru di sekitar news
 bool NewsFilter = true;   // nilai efektif (preset terbaru, atau input di atas jika UsePresetTerbaru=false)
+input bool            I_NewsFilterFundedOnly  = true;   // Filter news +-60m hanya di akun FUNDED (evaluasi: hanya aturan firm +-NewsHardMin)
+bool NewsFilterFundedOnly = true;   // nilai efektif (preset terbaru, atau input di atas jika UsePresetTerbaru=false)
 input int             I_NewsBeforeMin         = 60;     // Menit sebelum news
 int NewsBeforeMin = 60;   // nilai efektif (preset terbaru, atau input di atas jika UsePresetTerbaru=false)
 input int             I_NewsAfterMin          = 60;     // Menit sesudah news
@@ -3264,7 +3266,7 @@ void NewsUpdate(datetime now)
    g_newsHard = false;
    for(int i = 0; i < ArraySize(g_newsT); i++)
       if(NewsHardMin > 0 && MathAbs((double)(now - g_newsT[i])) <= NewsHardMin * 60) g_newsHard = true;
-   if(!NewsFilter) { g_newsBlock = false; return; }
+   if(!NewsFilter || (NewsFilterFundedOnly && g_phase != Phase_Funded)) { g_newsBlock = false; return; }
    bool blk = false;
    g_newsNowTxt = "";
    g_newsNextTxt = "";
@@ -4446,7 +4448,7 @@ void DrawPanel()
             "   base " + DoubleToString(g_dailyRet * 100, 2) + "%/hari sd " + DoubleToString(g_dailySd * 100, 2) + "%" + (g_st.trades >= 20 ? " (riil)" : " (asumsi)") +
             "   progress floor " + (g_progFloor > 0 ? Money(g_progFloor) : "-") + "   spread avg " + DoubleToString(g_spreadAvg, 0);
      }
-   string nw  = !NewsFilter ? "off" : (!g_newsOk ? "kalender tidak tersedia" : (g_newsBlock ? "BLOK: " + g_newsNowTxt : "next: " + (g_newsNextTxt == "" ? "-" : g_newsNextTxt)));
+   string nw  = !NewsFilter ? "off" : (NewsFilterFundedOnly && g_phase != Phase_Funded) ? "challenge: hanya aturan firm +-" + IntegerToString(NewsHardMin) + "m   next: " + (g_newsNextTxt == "" ? "-" : g_newsNextTxt) : (!g_newsOk ? "kalender tidak tersedia" : (g_newsBlock ? "BLOK: " + g_newsNowTxt : "next: " + (g_newsNextTxt == "" ? "-" : g_newsNextTxt)));
    string nh  = "NEWS  (" + (NewsImportance == News_HighOnly ? "high" : "medium+high") + " " + g_newsCur + ", -" + IntegerToString(NewsBeforeMin) + " / +" + IntegerToString(NewsAfterMin) + " menit)   |   regime: " + (!RegimeFilter ? "off" : g_regimeTxt);
    string sl[]; ArrayResize(sl, ns);
    for(int i = 0; i < ns; i++)
@@ -4487,7 +4489,7 @@ void DrawPanel()
       plc[npl] = CLR_DIM; npl++;
      }
    string rb = (RiskMode == Compounding_PercentOfCurrentEquity) ? "equity" : Money(g_initBal) + " " + cur;
-   string ft = (UsePresetTerbaru ? "v2.86 preset otomatis   risk base " : "v2.86 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
+   string ft = (UsePresetTerbaru ? "v2.87 preset otomatis   risk base " : "v2.87 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
                "   push " + (PushAlerts ? "on" : "off") + "   weekend close " + (CloseBeforeWeekend ? "on" : "off");
    long tickAge = (long)(TimeCurrent() - (datetime)SymbolInfoInteger(_Symbol, SYMBOL_TIME));
    string clk = "NY " + TimeToString(ServerToNY(TimeCurrent()), TIME_MINUTES) + "   LDN " + TimeToString(ServerToLondon(TimeCurrent()), TIME_MINUTES) +
@@ -5084,6 +5086,7 @@ void ApplyPresetMode()
    CloseBeforeWeekend = UsePresetTerbaru ? (bool)(false) : I_CloseBeforeWeekend;
    WeekendCloseNYMin = UsePresetTerbaru ? (int)(16 * 60 + 45) : I_WeekendCloseNYMin;
    NewsFilter = UsePresetTerbaru ? (bool)(true) : I_NewsFilter;
+   NewsFilterFundedOnly = UsePresetTerbaru ? (bool)(true) : I_NewsFilterFundedOnly;
    NewsBeforeMin = UsePresetTerbaru ? (int)(60) : I_NewsBeforeMin;
    NewsAfterMin = UsePresetTerbaru ? (int)(60) : I_NewsAfterMin;
    NewsImportance = UsePresetTerbaru ? (ENUM_NEWS_IMP)(News_HighOnly) : I_NewsImportance;
