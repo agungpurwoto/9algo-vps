@@ -28,7 +28,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.4"
+VERSION = "1.5"
 
 
 def log(msg):
@@ -300,6 +300,8 @@ def handle_request(req):
 
 # ---------------- self-update ----------------
 def self_update(state):
+    if TESTER["running"] or tester_proc_alive():
+        return                                              # jangan restart di tengah backtest
     c, js, h = gh("GET", "/contents/vps/9algo_sync.py?ref=main",
                   headers={"If-None-Match": state["etag_self"]} if state.get("etag_self") else {})
     if c != 200:
@@ -456,17 +458,50 @@ def tester_worker(req, state):
 
 
 def check_tester(state):
+    if TESTER["running"] and TESTER["running"].get("orphan"):
+        if tester_proc_alive():
+            return
+        TESTER["running"] = None
     if TESTER["running"]:
+        return
+    if tester_proc_alive():
+        # terminal tester dari proses sync sebelumnya masih jalan -> tunggu, jangan buka tester kedua
+        TESTER["running"] = {"id": state.get("tester_running_id", "?"), "job": "terminal tester lama masih jalan",
+                             "since": "-", "done": 0, "orphan": True}
         return
     req = fetch_json_if_changed(state, "deploy/tester.json", "etag_tester")
     if not req or not req.get("id") or req.get("id") == state.get("tester_done_id"):
         return
     TESTER["running"] = {"id": req["id"], "job": "mulai", "since": time.strftime("%H:%M:%S"), "done": 0}
+    TESTER["results"] = []
+    state["tester_running_id"] = req["id"]
     threading.Thread(target=tester_worker, args=(req, state), daemon=True).start()
 
 
+def tester_proc_alive():
+    """Ada terminal tester (C:/9algo_tester) yang masih jalan? (mis. sisa sebelum sync restart)"""
+    if os.name != "nt":
+        return False
+    exe = str(tester_dir() / "terminal64.exe").replace("/", "\\").replace("'", "''")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                        f"@(Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq '{exe}' }}).Count"],
+                       capture_output=True, text=True, timeout=30)
+    return r.stdout.strip() not in ("", "0")
+
+
+def tester_logs():
+    td = tester_dir()
+    out = {}
+    day = time.strftime("%Y%m%d")
+    out["terminal"] = tail(td / "logs" / f"{day}.log", 25)
+    agents = sorted(glob.glob(str(td / "Tester" / "**" / "logs" / f"{day}.log"), recursive=True), key=os.path.getmtime)
+    if agents:
+        out["agent"] = tail(Path(agents[-1]), 25)
+    return out
+
+
 def tester_status():
-    return {"running": TESTER["running"], "results": [{k: v for k, v in r.items() if k != "deals"} for r in TESTER["results"]],
+    return {"running": TESTER["running"], "logs": tester_logs() if TESTER["running"] else None, "results": [{k: v for k, v in r.items() if k != "deals"} for r in TESTER["results"]],
             "login": "password investor" if (CFG.get("tester") or {}).get("password") else "login tersimpan terminal live",
             "dir": str(tester_dir())}
 
