@@ -28,7 +28,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.3"
+VERSION = "1.4"
 
 
 def log(msg):
@@ -382,16 +382,17 @@ def parse_report(html: str):
 def run_tester_job(td: Path, job: dict, creds: dict):
     name = re.sub(r"[^A-Za-z0-9_-]", "_", job["name"])
     src = fetch_file(job.get("file", f"src/{EA_FILE}"))
+    # compile di terminal live (punya MQL5/Include standar), lalu salin .ex5 ke terminal tester
+    d = main_dir()
+    ci = d / "MQL5" / "Experts" / "9algo_ci" / f"test_{name}.mq5"
+    ci.parent.mkdir(parents=True, exist_ok=True)
+    ci.write_bytes(src)
+    comp = compile_file(d, ci)
+    if not comp["ok"] or not ci.with_suffix(".ex5").exists():
+        return {"name": job["name"], "ok": False, "error": "compile gagal", "compile": comp.get("errors", [])[:10] + [comp.get("result", "")]}
     exp_dir = td / "MQL5" / "Experts" / "9algo_test"
     exp_dir.mkdir(parents=True, exist_ok=True)
-    srcf = exp_dir / f"{name}.mq5"
-    srcf.write_bytes(src)
-    me = td / "metaeditor64.exe"
-    logf = Path(tempfile.gettempdir()) / f"9algo_tc_{name}.log"
-    subprocess.run([str(me), "/portable", f"/compile:{srcf}", f"/log:{logf}"], timeout=300, capture_output=True)
-    comp = read_any(logf).splitlines()[-3:] if logf.exists() else ["(log compile tidak ada)"]
-    if not srcf.with_suffix(".ex5").exists():
-        return {"name": job["name"], "ok": False, "error": "compile gagal", "compile": comp}
+    shutil.copy2(ci.with_suffix(".ex5"), exp_dir / f"{name}.ex5")
     params = job.get("inputs", {})
     write_utf16(td / "MQL5" / "Profiles" / "Tester" / f"{name}.set", "\n".join(f"{k}={v}" for k, v in params.items()) + "\n")
     rep_rel = f"reports\\{name}"
