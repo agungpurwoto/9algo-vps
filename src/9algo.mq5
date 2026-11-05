@@ -26,7 +26,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "9algo by Singularity"
 #property link        "https://singularity.id"
-#property version     "2.87"
+#property version     "2.88"
 #property description "9algo by Singularity - 9 algoritma dalam 1 EA untuk XAUUSD, XAGUSD, USDJPY, NQ"
 #property description "Prop-firm guard: Max Daily Loss, Max Loss (trailing HWM), cap total risk, panel target & statistik"
 #include <Trade\Trade.mqh>
@@ -4489,7 +4489,7 @@ void DrawPanel()
       plc[npl] = CLR_DIM; npl++;
      }
    string rb = (RiskMode == Compounding_PercentOfCurrentEquity) ? "equity" : Money(g_initBal) + " " + cur;
-   string ft = (UsePresetTerbaru ? "v2.87 preset otomatis   risk base " : "v2.87 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
+   string ft = (UsePresetTerbaru ? "v2.88 preset otomatis   risk base " : "v2.88 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
                "   push " + (PushAlerts ? "on" : "off") + "   weekend close " + (CloseBeforeWeekend ? "on" : "off");
    long tickAge = (long)(TimeCurrent() - (datetime)SymbolInfoInteger(_Symbol, SYMBOL_TIME));
    string clk = "NY " + TimeToString(ServerToNY(TimeCurrent()), TIME_MINUTES) + "   LDN " + TimeToString(ServerToLondon(TimeCurrent()), TIME_MINUTES) +
@@ -5061,6 +5061,33 @@ void BuildStrategies()
 
 //+------------------------------------------------------------------+
 // UsePresetTerbaru=false -> pakai nilai yang diisi di jendela input chart; true -> nilai rekomendasi bawaan versi ini
+// Update dari VPS sync: setelah .ex5 baru di-compile, sync menulis MQL5/Files/9algo_reload.txt.
+// Compile lewat command line tidak membuat MT5 memuat ulang EA, jadi EA memuat ulang dirinya sendiri
+// dengan menyimpan lalu memasang template chart ini (input & chart tetap sama, binary baru terbaca).
+string g_reloadSeen = "#";
+string ReadReloadFlag()
+  {
+   if(MQLInfoInteger(MQL_TESTER) || !FileIsExist("9algo_reload.txt")) return "";
+   int h = FileOpen("9algo_reload.txt", FILE_READ | FILE_TXT | FILE_ANSI | FILE_SHARE_READ | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE) return g_reloadSeen;
+   string v = FileReadString(h);
+   FileClose(h);
+   return v;
+  }
+void CheckReloadFlag()
+  {
+   string v = ReadReloadFlag();
+   if(g_reloadSeen == "#") { g_reloadSeen = v; return; }       // nilai saat EA dimuat
+   if(v == "" || v == g_reloadSeen) return;
+   g_reloadSeen = v;
+   string tpl = "9algo_reload_" + IntegerToString(ChartID() % 100000);
+   if(ChartSaveTemplate(0, tpl))
+     {
+      Print("9algo: versi baru terpasang (", v, ") -> EA dimuat ulang");
+      ChartApplyTemplate(0, tpl);
+     }
+  }
+
 // nilai efektif di-set ulang tiap init (global tidak selalu di-reset MT5 saat ganti input/TF)
 // UsePresetTerbaru=true -> rekomendasi bawaan versi ini; false -> nilai di jendela input chart
 void ApplyPresetMode()
@@ -5239,6 +5266,8 @@ int OnInit()
         }
      }
    ApplyChartStyle();
+   g_reloadSeen = "#";
+   CheckReloadFlag();        // catat penanda versi saat ini supaya tidak reload berulang
    EventSetTimer(5);   // panel, guard, news, export tetap jalan walau tidak ada tick (market tutup)
    return INIT_SUCCEEDED;
   }
@@ -5496,6 +5525,7 @@ void OnTimer()
   {
    MaintainCommon();
    VoProcess();
+   CheckReloadFlag();
   }
 
 void OnTick()

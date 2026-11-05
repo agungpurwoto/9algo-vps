@@ -1,6 +1,6 @@
 {
-  "id": "v2.87-1",
+  "id": "v2.88-1",
   "file": "src/9algo.mq5",
   "deploy": true,
-  "note": "filter news 60m hanya di akun funded; challenge cukup aturan firm +-3m"
+  "note": "EA memuat ulang dirinya sendiri setelah update dari VPS sync"
 }

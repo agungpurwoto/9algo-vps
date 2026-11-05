@@ -28,7 +28,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.1"
+VERSION = "1.2"
 
 
 def log(msg):
@@ -267,6 +267,13 @@ def handle_request(req):
     lc = compile_file(d, live)
     out["live_compile"] = lc
     out["deployed"] = lc["ok"]
+    if lc["ok"]:
+        # compile lewat command line tidak membuat MT5 memuat ulang EA -> beri tanda; EA (v2.88+) memuat ulang dirinya
+        try:
+            (d / "MQL5" / "Files").mkdir(parents=True, exist_ok=True)
+            (d / "MQL5" / "Files" / "9algo_reload.txt").write_text(f"{req['id']} {time.strftime('%Y-%m-%d %H:%M:%S')}", encoding="ascii")
+        except Exception as e:
+            out["reload_flag_error"] = str(e)
     out["result"] = "DIPASANG - EA di chart reload otomatis" if lc["ok"] else "compile live gagal (cek live_compile)"
     return out
 
