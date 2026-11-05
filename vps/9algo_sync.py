@@ -239,6 +239,23 @@ def fetch_file(path):
     return base64.b64decode(blob["content"])
 
 
+def restart_terminal(d: Path):
+    """Tutup MT5 live dengan sopan lalu buka lagi (profil & chart & EA dimuat ulang dengan .ex5 baru).
+    Posisi aman: SL/TP ada di server broker, antrean siaga EA tersimpan di file."""
+    inst = Path(CFG["mt5_dir"]) if CFG.get("mt5_dir") else Path(read_any(d / "origin.txt").strip().strip("\ufeff"))
+    exe = inst / "terminal64.exe"
+    if not exe.exists():
+        return "terminal64.exe tidak ditemukan"
+    ps = ("$p = Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '%s' }; "
+          "foreach ($x in $p) { [void]$x.CloseMainWindow() }; "
+          "for ($i=0; $i -lt 30 -and ($p | Where-Object { -not $_.HasExited }); $i++) { Start-Sleep 1; $p | ForEach-Object { $_.Refresh() } }; "
+          "$p | Where-Object { -not $_.HasExited } | Stop-Process -Force") % str(exe).replace("'", "''")
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=90, capture_output=True)
+    time.sleep(3)
+    subprocess.Popen([str(exe)], cwd=str(inst))
+    return "MT5 dibuka ulang"
+
+
 def handle_request(req):
     d = main_dir()
     if not d:
@@ -275,6 +292,9 @@ def handle_request(req):
         except Exception as e:
             out["reload_flag_error"] = str(e)
     out["result"] = "DIPASANG - EA di chart reload otomatis" if lc["ok"] else "compile live gagal (cek live_compile)"
+    if lc["ok"] and req.get("restart_terminal"):
+        log("restart MT5 supaya chart memuat versi baru ...")
+        out["restart"] = restart_terminal(d)
     return out
 
 
@@ -456,6 +476,18 @@ def main():
         return
     state = load_state()
     TESTER["results"] = state.get("tester_results", [])
+    if not state.get("migrated_reload"):
+        # sekali saja saat sync >= 1.2 pertama jalan: EA lama di chart belum punya fitur reload otomatis,
+        # jadi MT5 dibuka ulang supaya semua chart memuat .ex5 terbaru. Setelah ini update cukup lewat penanda.
+        d = main_dir()
+        if d:
+            log("sekali saja: membuka ulang MT5 supaya chart memuat EA versi terbaru ...")
+            try:
+                log(restart_terminal(d))
+            except Exception as e:
+                log(f"[!] restart MT5 gagal: {e}")
+        state["migrated_reload"] = True
+        save_state(state)
     while True:
         try:
             self_update(state)
