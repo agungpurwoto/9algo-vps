@@ -28,7 +28,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.5"
+VERSION = "1.6"
 
 
 def log(msg):
@@ -414,7 +414,7 @@ def run_tester_job(td: Path, job: dict, creds: dict):
     inif = td / f"9algo_{name}.ini"
     inif.write_text(ini, encoding="ascii", errors="replace")
     t0 = time.time()
-    flags = 0x00000040 if os.name == "nt" else 0          # IDLE_PRIORITY_CLASS: jangan ganggu terminal live
+    flags = 0x00004000 if os.name == "nt" else 0          # BELOW_NORMAL_PRIORITY_CLASS: terminal live tetap didahulukan
     p = subprocess.Popen([str(td / "terminal64.exe"), "/portable", f"/config:{inif}"], creationflags=flags)
     try:
         p.wait(timeout=int(job.get("timeout_min", 180)) * 60)
@@ -460,6 +460,11 @@ def tester_worker(req, state):
 def check_tester(state):
     if TESTER["running"] and TESTER["running"].get("orphan"):
         if tester_proc_alive():
+            # permintaan baru dengan kill_running=true boleh menghentikan tester lama
+            req = fetch_json_if_changed(state, "deploy/tester.json", "etag_tester")
+            if req and req.get("kill_running") and req.get("id") != state.get("tester_done_id"):
+                kill_tester()
+                state["etag_tester"] = None              # baca lagi di siklus berikut
             return
         TESTER["running"] = None
     if TESTER["running"]:
@@ -487,6 +492,14 @@ def tester_proc_alive():
                         f"@(Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq '{exe}' }}).Count"],
                        capture_output=True, text=True, timeout=30)
     return r.stdout.strip() not in ("", "0")
+
+
+def kill_tester():
+    exe = str(tester_dir() / "terminal64.exe").replace("/", "\\").replace("'", "''")
+    subprocess.run(["powershell", "-NoProfile", "-Command",
+                    f"Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -eq '{exe}' }} | Stop-Process -Force"],
+                   capture_output=True, timeout=60)
+    log("terminal tester lama dihentikan")
 
 
 def tester_logs():

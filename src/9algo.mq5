@@ -26,7 +26,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "9algo by Singularity"
 #property link        "https://singularity.id"
-#property version     "2.88"
+#property version     "2.89"
 #property description "9algo by Singularity - 9 algoritma dalam 1 EA untuk XAUUSD, XAGUSD, USDJPY, NQ"
 #property description "Prop-firm guard: Max Daily Loss, Max Loss (trailing HWM), cap total risk, panel target & statistik"
 #include <Trade\Trade.mqh>
@@ -3469,7 +3469,7 @@ bool EpochStable();
 void GuardUpdate(datetime now)
   {
    PhaseSync();
-   if(now - g_statsAt >= 60) { g_statsAt = now; ComputeStats(now); }
+   if(now - g_statsAt >= (MQLInfoInteger(MQL_TESTER) ? 3600 : 60)) { g_statsAt = now; ComputeStats(now); }   // backtest: tiap jam (history makin panjang)
    // baca ulang flag halt (bisa di-reset dari chart lain lewat tombol RESET HALT)
    bool ht = GlobalVariableCheck(GVP() + "HALTTOTAL");
    if(!ht && g_haltTotal) { g_haltTotal = false; g_haltActed = g_haltDaily; g_guardWhy = g_haltDaily ? "Max Daily Loss" : ""; }
@@ -3552,11 +3552,12 @@ void GuardUpdate(datetime now)
    ConsistencyUpdate(now);
    ChallengeUpdate(now);
    RegimeUpdate(now);
-   if(ExportState) ExportStateJson(now);
+   bool tst = MQLInfoInteger(MQL_TESTER) != 0;          // backtest: lewati file I/O yang tidak memengaruhi trading
+   if(ExportState && !tst) ExportStateJson(now);
    static datetime lastHedge = 0;
-   if(now - lastHedge >= 10 || now < lastHedge) { lastHedge = now; WriteHedgeFile(); }
+   if(!tst && (now - lastHedge >= 10 || now < lastHedge)) { lastHedge = now; WriteHedgeFile(); }
    static datetime lastReg = 0;
-   if(now - lastReg >= 600 || now < lastReg) { lastReg = now; WriteRegistry(); }
+   if(!tst && (now - lastReg >= 600 || now < lastReg)) { lastReg = now; WriteRegistry(); }
    if(CloseBeforeWeekend)
      {
       datetime ny = ServerToNY(now);
@@ -3735,11 +3736,12 @@ void ChallengeUpdate(datetime now)
    else g_progLockHit = false;
 
    // --- auto-pause + Monte Carlo tiap 60 detik
-   if(now - lastMC >= 60)
+   bool tstMC = MQLInfoInteger(MQL_TESTER) != 0;
+   if(now - lastMC >= (tstMC ? 3600 : 60))
      {
       lastMC = now;
       StrategyStatsUpdate();
-      if(IsEval() && goal > 0)
+      if(IsEval() && goal > 0 && !tstMC)                  // Monte Carlo hanya untuk panel live
         {
          int days = g_targetDays > 0 ? MathMax(1, g_targetDays - g_challengeDay + 1) : 60;
          MonteCarlo(g_dailyRet, g_dailySd, realized ? 1.0 : g_effMult, days, prog / g_initBal, goal / g_initBal, g_pPass, g_pBust);
@@ -4489,7 +4491,7 @@ void DrawPanel()
       plc[npl] = CLR_DIM; npl++;
      }
    string rb = (RiskMode == Compounding_PercentOfCurrentEquity) ? "equity" : Money(g_initBal) + " " + cur;
-   string ft = (UsePresetTerbaru ? "v2.88 preset otomatis   risk base " : "v2.88 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
+   string ft = (UsePresetTerbaru ? "v2.89 preset otomatis   risk base " : "v2.89 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
                "   push " + (PushAlerts ? "on" : "off") + "   weekend close " + (CloseBeforeWeekend ? "on" : "off");
    long tickAge = (long)(TimeCurrent() - (datetime)SymbolInfoInteger(_Symbol, SYMBOL_TIME));
    string clk = "NY " + TimeToString(ServerToNY(TimeCurrent()), TIME_MINUTES) + "   LDN " + TimeToString(ServerToLondon(TimeCurrent()), TIME_MINUTES) +

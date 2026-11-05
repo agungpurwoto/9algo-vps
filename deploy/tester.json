@@ -1,5 +1,5 @@
 {
- "id": "base-3",
+ "id": "base-4",
  "note": "baseline 9algo v2.87 per simbol, risk preset x1 (ChallengeMode off), M1 OHLC",
  "file": "src/9algo.mq5",
  "jobs": [
@@ -11,7 +11,7 @@
    "period": "H1",
    "model": 1,
    "deposit": 2500,
-   "timeout_min": 240,
+   "timeout_min": 300,
    "inputs": {
     "UsePresetTerbaru": "false",
     "I_ChallengeMode": "false"
@@ -26,7 +26,7 @@
    "period": "H1",
    "model": 1,
    "deposit": 2500,
-   "timeout_min": 240,
+   "timeout_min": 300,
    "inputs": {
     "UsePresetTerbaru": "false",
     "I_ChallengeMode": "false"
@@ -41,7 +41,7 @@
    "period": "H1",
    "model": 1,
    "deposit": 2500,
-   "timeout_min": 240,
+   "timeout_min": 300,
    "inputs": {
     "UsePresetTerbaru": "false",
     "I_ChallengeMode": "false"
@@ -56,12 +56,13 @@
    "period": "H1",
    "model": 1,
    "deposit": 2500,
-   "timeout_min": 240,
+   "timeout_min": 300,
    "inputs": {
     "UsePresetTerbaru": "false",
     "I_ChallengeMode": "false"
    },
    "file": "src/9algo.mq5"
   }
- ]
+ ],
+ "kill_running": true
 }

@@ -1,6 +1,6 @@
 {
-  "id": "v2.88-1",
+  "id": "v2.89-1",
   "file": "src/9algo.mq5",
   "deploy": true,
-  "note": "EA memuat ulang dirinya sendiri setelah update dari VPS sync"
+  "note": "backtest lebih cepat (Monte Carlo/statistik/file I/O dikurangi saat tester); live tidak berubah"
 }
