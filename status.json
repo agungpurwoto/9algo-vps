@@ -1,0 +1,565 @@
+{
+ "sync_version": "1.6",
+ "vps_time": "2026-11-08 00:03:38",
+ "utc": "2026-11-07 17:03:38",
+ "data_dir": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4",
+ "allow_deploy": true,
+ "last_compile": {
+  "id": "v2.89-1",
+  "time": "2026-11-05 19:36:01",
+  "test_compile": {
+   "ok": true,
+   "result": "Result: 0 errors, 0 warnings, 36204 ms elapsed, cpu='X64 Regular'",
+   "errors": [],
+   "warnings": [],
+   "log": [
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Experts\\9algo_ci\\9algo.mq5 : information: compiling C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Experts\\9algo_ci\\9algo.mq5",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Experts\\9algo_ci\\9algo.mq5 : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Object.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Object.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\StdLibErr.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\OrderInfo.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\HistoryOrderInfo.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\PositionInfo.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\DealInfo.mqh",
+    ": information: generating code",
+    ": information: generating code 3%",
+    ": information: generating code 6%",
+    ": information: generating code 9%",
+    ": information: generating code 12%",
+    ": information: generating code 15%",
+    ": information: generating code 18%",
+    ": information: generating code 21%",
+    ": information: generating code 24%",
+    ": information: generating code 27%",
+    ": information: generating code 30%",
+    ": information: generating code 33%",
+    ": information: generating code 36%",
+    ": information: generating code 39%",
+    ": information: generating code 42%",
+    ": information: generating code 45%",
+    ": information: generating code 48%",
+    ": information: generating code 51%",
+    ": information: generating code 54%",
+    ": information: generating code 57%",
+    ": information: generating code 60%",
+    ": information: generating code 63%",
+    ": information: generating code 66%",
+    ": information: generating code 69%",
+    ": information: generating code 72%",
+    ": information: generating code 75%",
+    ": information: generating code 78%",
+    ": information: generating code 81%",
+    ": information: generating code 84%",
+    ": information: generating code 87%",
+    ": information: generating code 90%",
+    ": information: generating code 93%",
+    ": information: generating code 95%",
+    ": information: generating code 100%",
+    ": information: code generated",
+    "Result: 0 errors, 0 warnings, 36204 ms elapsed, cpu='X64 Regular'"
+   ]
+  },
+  "deployed": true,
+  "backup": "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Experts\\9algo_ci\\backup_20261105_193601_9algo.mq5",
+  "live_compile": {
+   "ok": true,
+   "result": "Result: 0 errors, 0 warnings, 37239 ms elapsed, cpu='X64 Regular'",
+   "errors": [],
+   "warnings": [],
+   "log": [
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Experts\\9algo.mq5 : information: compiling C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Experts\\9algo.mq5",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Experts\\9algo.mq5 : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Object.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Object.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\StdLibErr.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\OrderInfo.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\HistoryOrderInfo.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\PositionInfo.mqh",
+    "C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\Trade.mqh : information: including C:\\Users\\Administrator\\AppData\\Roaming\\MetaQuotes\\Terminal\\10CE948A1DFC9A8C27E56E827008EBD4\\MQL5\\Include\\Trade\\DealInfo.mqh",
+    ": information: generating code",
+    ": information: generating code 3%",
+    ": information: generating code 6%",
+    ": information: generating code 9%",
+    ": information: generating code 12%",
+    ": information: generating code 15%",
+    ": information: generating code 18%",
+    ": information: generating code 21%",
+    ": information: generating code 24%",
+    ": information: generating code 27%",
+    ": information: generating code 30%",
+    ": information: generating code 33%",
+    ": information: generating code 36%",
+    ": information: generating code 39%",
+    ": information: generating code 42%",
+    ": information: generating code 45%",
+    ": information: generating code 48%",
+    ": information: generating code 51%",
+    ": information: generating code 54%",
+    ": information: generating code 57%",
+    ": information: generating code 60%",
+    ": information: generating code 63%",
+    ": information: generating code 66%",
+    ": information: generating code 69%",
+    ": information: generating code 72%",
+    ": information: generating code 75%",
+    ": information: generating code 78%",
+    ": information: generating code 81%",
+    ": information: generating code 84%",
+    ": information: generating code 87%",
+    ": information: generating code 90%",
+    ": information: generating code 93%",
+    ": information: generating code 95%",
+    ": information: generating code 100%",
+    ": information: code generated",
+    "Result: 0 errors, 0 warnings, 37239 ms elapsed, cpu='X64 Regular'"
+   ]
+  },
+  "result": "DIPASANG - EA di chart reload otomatis"
+ },
+ "tester": {
+  "running": null,
+  "logs": null,
+  "results": [],
+  "login": "login tersimpan terminal live",
+  "dir": "C:\\9algo_tester\\mt5"
+ },
+ "ea": {
+  "version": "#property version     \"2.89\"",
+  "source_mtime": "Thu Nov  5 19:36:01 2026",
+  "ex5_mtime": "Thu Nov  5 19:36:39 2026"
+ },
+ "experts_log": [],
+ "journal": [],
+ "ea_state": {
+  "state_26804145_NAS100.json": {
+   "age_sec": 68925,
+   "data": {
+    "ea": "9algo by Singularity",
+    "symbol": "NAS100",
+    "market": "Nasdaq-100",
+    "updated": "2026.11.06 23:54:52",
+    "status": "LIVE  -  Nasdaq-100",
+    "blocked_reason": "",
+    "account": {
+     "login": 26804145,
+     "currency": "USD",
+     "initial": 2500.0,
+     "balance": 2579.29,
+     "equity": 2579.29,
+     "hwm": 2636.23
+    },
+    "limits": {
+     "daily_limit": 131.33,
+     "daily_used": 47.29,
+     "daily_ea_stop": 105.06,
+     "maxloss_limit": 250.0,
+     "maxloss_floor": 2250.0,
+     "maxloss_ea_stop": 2300.0,
+     "open_risk": 0.0,
+     "open_risk_cap": 87.5
+    },
+    "targets": {
+     "profit_goal": 250.0,
+     "profit_now": 79.29,
+     "profitable_days": 1,
+     "profitable_days_min": 3,
+     "days_since_trade": 0,
+     "inactivity_days": 30,
+     "consistency_best_pct": 0.0,
+     "consistency_today_pct": 0.0,
+     "consistency_max_pct": 40.0
+    },
+    "stats": {
+     "net": 79.41,
+     "gross_profit": 161.19,
+     "gross_loss": -81.78,
+     "pf": 1.97,
+     "trades": 15,
+     "wins": 8,
+     "win_rate": 53.3,
+     "best": 53.69,
+     "worst": -24.58,
+     "expectancy": 5.29,
+     "today_closed": -47.25
+    },
+    "news": {
+     "filter": true,
+     "available": true,
+     "blocked": false,
+     "now": "",
+     "next": ""
+    },
+    "firm_tag": "fivepercentonlineltd",
+    "challenge": {
+     "phase": "CHALLENGE",
+     "phase_source": "default: dianggap CHALLENGE (akun funded? klik tombol fase)",
+     "day": 7,
+     "target_days": 45,
+     "role": "Steady (auto)",
+     "risk_mult": 4.27,
+     "auto_scale": 4.27,
+     "p_pass": 0.708,
+     "p_bust": 0.003,
+     "daily_ret_base": 0.0005,
+     "daily_sd_base": 0.0025,
+     "progress_floor": 0.0,
+     "spread_avg": 221.2
+    },
+    "regime": {
+     "filter": false,
+     "p_trend": 0.5,
+     "text": ""
+    },
+    "strategies": [
+     {
+      "name": "Noise-NQ",
+      "on": true,
+      "paused": false,
+      "risk_pct": 0.15,
+      "magic": 12101,
+      "positions": 0,
+      "orders": 0,
+      "state": "sig ok",
+      "why": "sinyal noise siap"
+     }
+    ]
+   }
+  },
+  "state_26804145_USDJPY.json": {
+   "age_sec": 68946,
+   "data": {
+    "ea": "9algo by Singularity",
+    "symbol": "USDJPY",
+    "market": "USDJPY",
+    "updated": "2026.11.06 23:54:32",
+    "status": "LIVE  -  USDJPY",
+    "blocked_reason": "",
+    "account": {
+     "login": 26804145,
+     "currency": "USD",
+     "initial": 2500.0,
+     "balance": 2579.29,
+     "equity": 2579.29,
+     "hwm": 2636.07
+    },
+    "limits": {
+     "daily_limit": 131.33,
+     "daily_used": 47.29,
+     "daily_ea_stop": 105.06,
+     "maxloss_limit": 250.0,
+     "maxloss_floor": 2250.0,
+     "maxloss_ea_stop": 2300.0,
+     "open_risk": 0.0,
+     "open_risk_cap": 87.5
+    },
+    "targets": {
+     "profit_goal": 250.0,
+     "profit_now": 79.29,
+     "profitable_days": 1,
+     "profitable_days_min": 3,
+     "days_since_trade": 0,
+     "inactivity_days": 30,
+     "consistency_best_pct": 0.0,
+     "consistency_today_pct": 0.0,
+     "consistency_max_pct": 40.0
+    },
+    "stats": {
+     "net": 79.41,
+     "gross_profit": 161.19,
+     "gross_loss": -81.78,
+     "pf": 1.97,
+     "trades": 15,
+     "wins": 8,
+     "win_rate": 53.3,
+     "best": 53.69,
+     "worst": -24.58,
+     "expectancy": 5.29,
+     "today_closed": -47.25
+    },
+    "news": {
+     "filter": true,
+     "available": true,
+     "blocked": false,
+     "now": "",
+     "next": ""
+    },
+    "firm_tag": "fivepercentonlineltd",
+    "challenge": {
+     "phase": "CHALLENGE",
+     "phase_source": "default: dianggap CHALLENGE (akun funded? klik tombol fase)",
+     "day": 7,
+     "target_days": 45,
+     "role": "Steady (auto)",
+     "risk_mult": 4.27,
+     "auto_scale": 4.27,
+     "p_pass": 0.698,
+     "p_bust": 0.003,
+     "daily_ret_base": 0.0005,
+     "daily_sd_base": 0.0025,
+     "progress_floor": 0.0,
+     "spread_avg": 2.7
+    },
+    "regime": {
+     "filter": false,
+     "p_trend": 0.5,
+     "text": ""
+    },
+    "strategies": [
+     {
+      "name": "Tokyo-JPY",
+      "on": true,
+      "paused": false,
+      "risk_pct": 0.23,
+      "magic": 8101,
+      "positions": 0,
+      "orders": 0,
+      "state": "",
+      "why": "GBPUSD ikut gerak 0.66 ADR"
+     },
+     {
+      "name": "Narrow-JPY",
+      "on": true,
+      "paused": false,
+      "risk_pct": 0.26,
+      "magic": 9201,
+      "positions": 0,
+      "orders": 0,
+      "state": "",
+      "why": "range kemarin 1.33 ADR, bukan hari sempit (<0.6)"
+     }
+    ]
+   }
+  },
+  "state_26804145_XAGUSD.json": {
+   "age_sec": 68920,
+   "data": {
+    "ea": "9algo by Singularity",
+    "symbol": "XAGUSD",
+    "market": "XAGUSD (silver)",
+    "updated": "2026.11.06 23:54:57",
+    "status": "LIVE  -  XAGUSD (silver)",
+    "blocked_reason": "",
+    "account": {
+     "login": 26804145,
+     "currency": "USD",
+     "initial": 2500.0,
+     "balance": 2579.29,
+     "equity": 2579.29,
+     "hwm": 2636.23
+    },
+    "limits": {
+     "daily_limit": 131.33,
+     "daily_used": 47.29,
+     "daily_ea_stop": 105.06,
+     "maxloss_limit": 250.0,
+     "maxloss_floor": 2250.0,
+     "maxloss_ea_stop": 2300.0,
+     "open_risk": 0.0,
+     "open_risk_cap": 87.5
+    },
+    "targets": {
+     "profit_goal": 250.0,
+     "profit_now": 79.29,
+     "profitable_days": 1,
+     "profitable_days_min": 3,
+     "days_since_trade": 0,
+     "inactivity_days": 30,
+     "consistency_best_pct": 0.0,
+     "consistency_today_pct": 0.0,
+     "consistency_max_pct": 40.0
+    },
+    "stats": {
+     "net": 79.41,
+     "gross_profit": 161.19,
+     "gross_loss": -81.78,
+     "pf": 1.97,
+     "trades": 15,
+     "wins": 8,
+     "win_rate": 53.3,
+     "best": 53.69,
+     "worst": -24.58,
+     "expectancy": 5.29,
+     "today_closed": -47.25
+    },
+    "news": {
+     "filter": true,
+     "available": true,
+     "blocked": false,
+     "now": "",
+     "next": ""
+    },
+    "firm_tag": "fivepercentonlineltd",
+    "challenge": {
+     "phase": "CHALLENGE",
+     "phase_source": "default: dianggap CHALLENGE (akun funded? klik tombol fase)",
+     "day": 7,
+     "target_days": 45,
+     "role": "Steady (auto)",
+     "risk_mult": 4.27,
+     "auto_scale": 4.27,
+     "p_pass": 0.723,
+     "p_bust": 0.005,
+     "daily_ret_base": 0.0005,
+     "daily_sd_base": 0.0025,
+     "progress_floor": 0.0,
+     "spread_avg": 58.6
+    },
+    "regime": {
+     "filter": false,
+     "p_trend": 0.5,
+     "text": ""
+    },
+    "strategies": [
+     {
+      "name": "BigDay-AG",
+      "on": true,
+      "paused": false,
+      "risk_pct": 0.32,
+      "magic": 18201,
+      "positions": 0,
+      "orders": 0,
+      "state": "",
+      "why": "range kemarin 0.97 ADR, bukan big day (>=1.5)"
+     }
+    ]
+   }
+  },
+  "state_26804145_XAUUSD.json": {
+   "age_sec": 68925,
+   "data": {
+    "ea": "9algo by Singularity",
+    "symbol": "XAUUSD",
+    "market": "XAUUSD (gold)",
+    "updated": "2026.11.06 23:54:53",
+    "status": "LIVE  -  XAUUSD (gold)",
+    "blocked_reason": "",
+    "account": {
+     "login": 26804145,
+     "currency": "USD",
+     "initial": 2500.0,
+     "balance": 2579.29,
+     "equity": 2579.29,
+     "hwm": 2636.23
+    },
+    "limits": {
+     "daily_limit": 131.33,
+     "daily_used": 47.29,
+     "daily_ea_stop": 105.06,
+     "maxloss_limit": 250.0,
+     "maxloss_floor": 2250.0,
+     "maxloss_ea_stop": 2300.0,
+     "open_risk": 0.0,
+     "open_risk_cap": 87.5
+    },
+    "targets": {
+     "profit_goal": 250.0,
+     "profit_now": 79.29,
+     "profitable_days": 1,
+     "profitable_days_min": 3,
+     "days_since_trade": 0,
+     "inactivity_days": 30,
+     "consistency_best_pct": 0.0,
+     "consistency_today_pct": 0.0,
+     "consistency_max_pct": 40.0
+    },
+    "stats": {
+     "net": 79.41,
+     "gross_profit": 161.19,
+     "gross_loss": -81.78,
+     "pf": 1.97,
+     "trades": 15,
+     "wins": 8,
+     "win_rate": 53.3,
+     "best": 53.69,
+     "worst": -24.58,
+     "expectancy": 5.29,
+     "today_closed": -47.25
+    },
+    "news": {
+     "filter": true,
+     "available": true,
+     "blocked": false,
+     "now": "",
+     "next": ""
+    },
+    "firm_tag": "fivepercentonlineltd",
+    "challenge": {
+     "phase": "CHALLENGE",
+     "phase_source": "default: dianggap CHALLENGE (akun funded? klik tombol fase)",
+     "day": 7,
+     "target_days": 45,
+     "role": "Steady (auto)",
+     "risk_mult": 4.27,
+     "auto_scale": 4.27,
+     "p_pass": 0.74,
+     "p_bust": 0.0,
+     "daily_ret_base": 0.0005,
+     "daily_sd_base": 0.0025,
+     "progress_floor": 0.0,
+     "spread_avg": 51.8
+    },
+    "regime": {
+     "filter": false,
+     "p_trend": 0.5,
+     "text": ""
+    },
+    "strategies": [
+     {
+      "name": "Noise-AU",
+      "on": true,
+      "paused": false,
+      "risk_pct": 0.18,
+      "magic": 12201,
+      "positions": 0,
+      "orders": 0,
+      "state": "sig ok",
+      "why": "sinyal noise siap"
+     },
+     {
+      "name": "Narrow-AU",
+      "on": true,
+      "paused": false,
+      "risk_pct": 0.32,
+      "magic": 9101,
+      "positions": 0,
+      "orders": 0,
+      "state": "",
+      "why": "range kemarin 0.98 ADR, bukan hari sempit (<0.6)"
+     },
+     {
+      "name": "Week-AU",
+      "on": true,
+      "paused": false,
+      "risk_pct": 0.2,
+      "magic": 15101,
+      "positions": 0,
+      "orders": 0,
+      "state": "armed",
+      "why": "menunggu breakout L 3869.79"
+     },
+     {
+      "name": "Round-AU",
+      "on": true,
+      "paused": false,
+      "risk_pct": 0.27,
+      "magic": 17101,
+      "positions": 0,
+      "orders": 0,
+      "state": "armed",
+      "why": "menunggu level / 4045.73"
+     },
+     {
+      "name": "BigDay-AU",
+      "on": true,
+      "paused": false,
+      "risk_pct": 0.18,
+      "magic": 18101,
+      "positions": 0,
+      "orders": 0,
+      "state": "",
+      "why": "range kemarin 0.98 ADR, bukan big day (>=1.5)"
+     }
+    ]
+   }
+  }
+ }
+}
