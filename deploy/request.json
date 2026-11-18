@@ -1,6 +1,6 @@
 {
-  "id": "v2.91-1",
-  "file": "src/9algo_live.mq5",
-  "deploy": true,
-  "note": "pending tidak menghalangi entry market (ditarik bila cap terlampaui); batas lot minimum 1.5x target risk; filter spread 10% jarak SL; BE @1.5R ON untuk Round-AU, Narrow-AU, Narrow-JPY"
+  "id": "10algo-1.00-uji1",
+  "file": "src/10algo.mq5",
+  "deploy": false,
+  "note": "compile uji 10algo saja, tidak dipasang ke chart"
 }
