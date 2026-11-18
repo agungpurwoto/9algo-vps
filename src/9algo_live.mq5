@@ -140,6 +140,9 @@ input string          NewsExtraCurrencies   = "";     // Tambahan mata uang, mis
 input bool            I_NewsClosePositions    = false;  // Tutup posisi terbuka saat masuk window news
 bool NewsClosePositions = false;   // nilai efektif (preset terbaru, atau input di atas jika UsePresetTerbaru=false)
 input bool            I_ExportData            = true;   // v2.90: ekspor bar M5 + riwayat trade (MFE/MAE) ke Common\Files\9algo untuk analisis (dibaca 9algo_sync)
+input double          I_BE_TriggerR           = 0.0;    // v2.90: geser SL ke impas saat profit >= X R (0 = MATI). Hanya strategi di daftar bawah
+input double          I_BE_LockR              = 0.0;    // v2.90: SL impas + kunci X R (0 = tepat di harga entry)
+input string          I_BE_Strategies         = "Round-AU,Narrow-AU,Narrow-JPY,Week-AU,BigDay-AU,BigDay-AG,Tokyo-JPY"; // v2.90: strategi yang ikut aturan impas (Noise tidak: sudah punya exit sendiri)
 input int             I_NewsHardMin           = 3;      // Aturan firm (High Stakes: tidak boleh eksekusi order +-2 menit news): blok + tarik order di broker +-X menit, selalu aktif
 int NewsHardMin = 3;   // nilai efektif (preset terbaru, atau input di atas jika UsePresetTerbaru=false)
 input bool            ResetGuardState       = false;  // true = hapus semua state tersimpan (halt, HWM, tanggal mulai, pause) saat init
@@ -5723,6 +5726,39 @@ void ExportBars()
    FileClose(h);
   }
 
+// v2.90: aturan impas (break-even) opsional per strategi. Aktif hanya jika I_BE_TriggerR > 0.
+// R = jarak entry ke SL awal. Selama SL masih di sisi rugi dan profit sudah >= TriggerR x R, SL digeser ke entry (+ LockR x R).
+// Sekali SL sudah di sisi impas/profit, aturan ini tidak menyentuh posisi itu lagi.
+void ManageBreakEven()
+  {
+   if(I_BE_TriggerR <= 0) return;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      long mg = PositionGetInteger(POSITION_MAGIC);
+      string tag = "";
+      for(int k = 0; k < ArraySize(g_s); k++)
+         if(g_s[k].Mine(mg)) { tag = g_s[k].tag; break; }
+      if(tag == "" || StringFind("," + I_BE_Strategies + ",", "," + tag + ",") < 0) continue;
+      bool buy = PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY;
+      double op = PositionGetDouble(POSITION_PRICE_OPEN), sl = PositionGetDouble(POSITION_SL), tp = PositionGetDouble(POSITION_TP);
+      if(sl <= 0) continue;
+      double rDist = buy ? op - sl : sl - op;
+      if(rDist <= 0) continue;                       // SL sudah impas/profit
+      double px = buy ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double gain = buy ? px - op : op - px;
+      if(gain < I_BE_TriggerR * rDist) continue;
+      double ns = NormPrice(buy ? op + I_BE_LockR * rDist : op - I_BE_LockR * rDist);
+      double stopLvl = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * g_point;
+      if(buy ? ns > px - stopLvl : ns < px + stopLvl) continue;
+      g_trade.SetExpertMagicNumber(mg);
+      if(g_trade.PositionModify(tk, ns, tp))
+         Print("9algo: ", tag, " SL digeser ke impas ", DoubleToString(ns, g_digits), " (profit ", DoubleToString(gain / rDist, 2), "R)");
+     }
+  }
+
 void ExportMaybe()
   {
    if(!I_ExportData || MQLInfoInteger(MQL_TESTER)) return;
@@ -5771,6 +5807,7 @@ void OnTick()
          if(g_dirWhy != "" && StringFind(g_s[i].why, "tertunda") != 0) g_s[i].why = (g_s[i].pend ? "tertunda: " : "") + g_dirWhy;
         }
    g_curPaused = false; g_curAuto = false; g_curVirt = false;
+   ManageBreakEven();
    VoProcess();
   }
 
