@@ -26,7 +26,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "9algo by Singularity"
 #property link        "https://singularity.id"
-#property version     "2.89"
+#property version     "2.90"
 #property description "9algo by Singularity - 9 algoritma dalam 1 EA untuk XAUUSD, XAGUSD, USDJPY, NQ"
 #property description "Prop-firm guard: Max Daily Loss, Max Loss (trailing HWM), cap total risk, panel target & statistik"
 #include <Trade\Trade.mqh>
@@ -139,6 +139,7 @@ ENUM_NEWS_IMP NewsImportance = News_HighOnly;   // nilai efektif (preset terbaru
 input string          NewsExtraCurrencies   = "";     // Tambahan mata uang, mis. "EUR,GBP" (USD/JPY otomatis sesuai simbol)
 input bool            I_NewsClosePositions    = false;  // Tutup posisi terbuka saat masuk window news
 bool NewsClosePositions = false;   // nilai efektif (preset terbaru, atau input di atas jika UsePresetTerbaru=false)
+input bool            I_ExportData            = true;   // v2.90: ekspor bar M5 + riwayat trade (MFE/MAE) ke Common\Files\9algo untuk analisis (dibaca 9algo_sync)
 input int             I_NewsHardMin           = 3;      // Aturan firm (High Stakes: tidak boleh eksekusi order +-2 menit news): blok + tarik order di broker +-X menit, selalu aktif
 int NewsHardMin = 3;   // nilai efektif (preset terbaru, atau input di atas jika UsePresetTerbaru=false)
 input bool            ResetGuardState       = false;  // true = hapus semua state tersimpan (halt, HWM, tanggal mulai, pause) saat init
@@ -1118,6 +1119,14 @@ int CountOrders(long magic)
    return c + VoIdleCount(magic);
   }
 
+// v2.90: hanya order pending yang boleh dihapus. Order market (mis. order penutup posisi yang sedang dieksekusi)
+// sempat terlihat di OrdersTotal() -> dulu ikut di-OrderDelete -> "cancel ... [invalid request]".
+bool IsPendingOrderType(long t)
+  {
+   return t == ORDER_TYPE_BUY_STOP || t == ORDER_TYPE_SELL_STOP || t == ORDER_TYPE_BUY_LIMIT || t == ORDER_TYPE_SELL_LIMIT ||
+          t == ORDER_TYPE_BUY_STOP_LIMIT || t == ORDER_TYPE_SELL_STOP_LIMIT;
+  }
+
 void DeleteOrders(long magic)
   {
    for(int i = ArraySize(g_vo) - 1; i >= 0; i--)
@@ -1127,6 +1136,7 @@ void DeleteOrders(long magic)
       ulong tk = OrderGetTicket(i);
       if(tk == 0) continue;
       if(OrderGetString(ORDER_SYMBOL) != _Symbol || OrderGetInteger(ORDER_MAGIC) != magic) continue;
+      if(!IsPendingOrderType(OrderGetInteger(ORDER_TYPE))) continue;
       g_trade.OrderDelete(tk);
      }
   }
@@ -1143,12 +1153,43 @@ bool HasOrderOfType(long magic, ENUM_ORDER_TYPE t)
    return VoState(magic, t) == 0;
   }
 
+// v2.90: penutupan yang baru dikirim diingat ~15 detik. Dulu tick berikutnya (deal belum masuk) mengirim close kedua
+// -> "failed market buy [Position doesn't exist]".
+ulong    g_closeTk[];
+datetime g_closeAt[];
+bool CloseSentRecently(ulong tk)
+  {
+   datetime n = TimeLocal();
+   for(int i = ArraySize(g_closeTk) - 1; i >= 0; i--)
+     {
+      if(n - g_closeAt[i] > 15)
+        {
+         int last = ArraySize(g_closeTk) - 1;
+         g_closeTk[i] = g_closeTk[last]; g_closeAt[i] = g_closeAt[last];
+         ArrayResize(g_closeTk, last); ArrayResize(g_closeAt, last);
+         continue;
+        }
+      if(g_closeTk[i] == tk) return true;
+     }
+   return false;
+  }
+
 void ClosePositionTicket(ulong tk)
   {
+   if(CloseSentRecently(tk)) return;
    for(int k = 0; k < 3; k++)
      {
-      if(g_trade.PositionClose(tk))
+      if(!PositionSelectByTicket(tk)) return;
+      bool ok = g_trade.PositionClose(tk);
+      uint rc = g_trade.ResultRetcode();
+      if(ok || rc == TRADE_RETCODE_PLACED || rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL)
+        {
+         int n = ArraySize(g_closeTk);
+         ArrayResize(g_closeTk, n + 1); ArrayResize(g_closeAt, n + 1);
+         g_closeTk[n] = tk; g_closeAt[n] = TimeLocal();
          break;
+        }
+      if(rc == TRADE_RETCODE_POSITION_CLOSED) return;
       Sleep(100);
      }
   }
@@ -1174,13 +1215,26 @@ int OurTicketsAll()
 
 bool GroupHedgeConflict(int dir, string &who);
 
+// v2.90: alasan penolakan yang sama tidak dicetak tiap menit (dulu ~350 baris/hari) -> cukup sekali per 30 menit
+void LogReject(string w)
+  {
+   static string lastW = "";
+   static datetime lastT = 0;
+   string key = w;
+   int p = StringFind(key, "(");
+   if(p > 0) key = StringSubstr(key, 0, p);
+   if(key == lastW && TimeLocal() - lastT < 1800) return;
+   lastW = key; lastT = TimeLocal();
+   Print("9algo: entry ditolak, ", w);
+  }
+
 bool DirectionalCapOk(bool buy, double &lots, double price, double sl)
   {
    string who = "";
    if(GroupHedgeConflict(buy ? 1 : -1, who))
      {
       g_dirWhy = "group-hedge: akun lain (" + who + ") punya posisi berlawanan di market ini";
-      Print("9algo: entry ditolak, ", g_dirWhy);
+      LogReject(g_dirWhy);
       return false;
      }
    if(g_dirCapPct <= 0) return true;
@@ -1204,7 +1258,7 @@ bool DirectionalCapOk(bool buy, double &lots, double price, double sl)
       add = TicketRiskMoney(_Symbol, buy, lots, price, sl);
       string w = "cap arah " + (buy ? "BUY" : "SELL") + " " + DoubleToString(g_dirCapPct, 1) + "% penuh (" + DoubleToString(have, 0) + "+" + DoubleToString(add, 0) + ")";
       g_dirWhy = w;
-      Print("9algo: entry ditolak, ", w);
+      LogReject(w);
       return false;
      }
    return true;
@@ -2497,6 +2551,7 @@ public:
          ulong tk = OrderGetTicket(i);
          if(tk == 0) continue;
          if(OrderGetString(ORDER_SYMBOL) != _Symbol || OrderGetInteger(ORDER_MAGIC) != magic) continue;
+         if(!IsPendingOrderType(OrderGetInteger(ORDER_TYPE))) continue;
          if(now >= OrderExpiryFor((datetime)OrderGetInteger(ORDER_TIME_SETUP)))
             g_trade.OrderDelete(tk);
         }
@@ -3000,6 +3055,7 @@ public:
          ulong tk = OrderGetTicket(i);
          if(tk == 0) continue;
          if(OrderGetString(ORDER_SYMBOL) != _Symbol || OrderGetInteger(ORDER_MAGIC) != magic) continue;
+         if(!IsPendingOrderType(OrderGetInteger(ORDER_TYPE))) continue;
          if(now >= OrderExpiryFor((datetime)OrderGetInteger(ORDER_TIME_SETUP)))
             g_trade.OrderDelete(tk);
         }
@@ -4491,7 +4547,7 @@ void DrawPanel()
       plc[npl] = CLR_DIM; npl++;
      }
    string rb = (RiskMode == Compounding_PercentOfCurrentEquity) ? "equity" : Money(g_initBal) + " " + cur;
-   string ft = (UsePresetTerbaru ? "v2.89 preset otomatis   risk base " : "v2.89 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
+   string ft = (UsePresetTerbaru ? "v2.90 preset otomatis   risk base " : "v2.90 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
                "   push " + (PushAlerts ? "on" : "off") + "   weekend close " + (CloseBeforeWeekend ? "on" : "off");
    long tickAge = (long)(TimeCurrent() - (datetime)SymbolInfoInteger(_Symbol, SYMBOL_TIME));
    string clk = "NY " + TimeToString(ServerToNY(TimeCurrent()), TIME_MINUTES) + "   LDN " + TimeToString(ServerToLondon(TimeCurrent()), TIME_MINUTES) +
@@ -5509,6 +5565,175 @@ void VoProcess()
    VoSave();
   }
 
+//+------------------------------------------------------------------+
+//| v2.90 Ekspor data untuk analisis (hanya baca, tidak trading)       |
+//|  export_trades_<login>_<sym>.csv : 1 baris per posisi 9algo di     |
+//|     simbol chart ini: entry, SL/TP awal, exit, net, MFE/MAE (M1),  |
+//|     dan gerak harga 24 jam setelah exit (peluang yang tertinggal)  |
+//|  export_bars_<login>_<sym>.csv   : bar M5 45 hari terakhir         |
+//|  Dikirim 9algo_sync (v1.7+) ke branch `export`.                    |
+//+------------------------------------------------------------------+
+datetime g_expLast = 0;
+bool     g_expDirty = true;
+
+string ExpTs(datetime t) { return TimeToString(t, TIME_DATE | TIME_SECONDS); }
+string ExpPx(string sym, double v) { return DoubleToString(v, (int)SymbolInfoInteger(sym, SYMBOL_DIGITS)); }
+string ExpClean(string v) { string x = v; StringReplace(x, ",", " "); StringReplace(x, "\n", " "); StringReplace(x, "\r", " "); return x; }
+
+// harga terbaik/terburuk dari bar M1 dalam [t1, t2]
+bool ExpRange(string sym, datetime t1, datetime t2, double &hi, double &lo, datetime &thi, datetime &tlo)
+  {
+   hi = -DBL_MAX; lo = DBL_MAX; thi = 0; tlo = 0;
+   if(t2 <= t1) return false;
+   MqlRates r[];
+   int n = CopyRates(sym, PERIOD_M1, t1 - 60, t2, r);
+   if(n <= 0) return false;
+   for(int i = 0; i < n; i++)
+     {
+      if(r[i].time + 60 <= t1 || r[i].time > t2) continue;
+      if(r[i].high > hi) { hi = r[i].high; thi = r[i].time; }
+      if(r[i].low < lo) { lo = r[i].low; tlo = r[i].time; }
+     }
+   return thi > 0;
+  }
+
+void ExportTrades()
+  {
+   if(!HistorySelect(TimeCurrent() - 120 * 86400, TimeCurrent() + 60)) return;
+   ulong pids[];
+   int np = 0;
+   int nd = HistoryDealsTotal();
+   for(int i = 0; i < nd; i++)
+     {
+      ulong d = HistoryDealGetTicket(i);
+      if(d == 0) continue;
+      if(HistoryDealGetString(d, DEAL_SYMBOL) != _Symbol) continue;
+      if(!IsOurMagic(HistoryDealGetInteger(d, DEAL_MAGIC))) continue;
+      if(HistoryDealGetInteger(d, DEAL_ENTRY) != DEAL_ENTRY_IN) continue;
+      ArrayResize(pids, np + 1);
+      pids[np++] = (ulong)HistoryDealGetInteger(d, DEAL_POSITION_ID);
+     }
+   string fn = "9algo\\export_trades_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + Slug(_Symbol) + ".csv";
+   int h = FileOpen(fn, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE) return;
+   FileWriteString(h, "position,symbol,strategy,magic,side,volume,t_in,p_in,sl0,tp0,t_out,p_out,net,exit,open,sl_now,risk_px,mfe_px,mae_px,t_mfe,t_mae,post24_fav_px,post24_adv_px\n");
+   for(int k = 0; k < np; k++)
+     {
+      ulong pid = pids[k];
+      if(!HistorySelectByPosition(pid)) continue;
+      datetime tin = 0, tout = 0;
+      double pin = 0, vol = 0, net = 0, outVol = 0, outVal = 0, sl0 = 0, tp0 = 0;
+      long mg = 0;
+      int side = 0;
+      string strat = "", exitc = "";
+      int n2 = HistoryDealsTotal();
+      for(int j = 0; j < n2; j++)
+        {
+         ulong d = HistoryDealGetTicket(j);
+         if(d == 0) continue;
+         long en = HistoryDealGetInteger(d, DEAL_ENTRY);
+         net += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_SWAP) + HistoryDealGetDouble(d, DEAL_COMMISSION) + HistoryDealGetDouble(d, DEAL_FEE);
+         if(en == DEAL_ENTRY_IN)
+           {
+            tin = (datetime)HistoryDealGetInteger(d, DEAL_TIME);
+            pin = HistoryDealGetDouble(d, DEAL_PRICE);
+            vol = HistoryDealGetDouble(d, DEAL_VOLUME);
+            mg = HistoryDealGetInteger(d, DEAL_MAGIC);
+            side = HistoryDealGetInteger(d, DEAL_TYPE) == DEAL_TYPE_BUY ? 1 : -1;
+            strat = HistoryDealGetString(d, DEAL_COMMENT);
+           }
+         else
+           {
+            double v = HistoryDealGetDouble(d, DEAL_VOLUME);
+            outVol += v; outVal += v * HistoryDealGetDouble(d, DEAL_PRICE);
+            datetime t = (datetime)HistoryDealGetInteger(d, DEAL_TIME);
+            if(t >= tout) { tout = t; exitc = HistoryDealGetString(d, DEAL_COMMENT); }
+           }
+        }
+      if(side == 0 || tin == 0) continue;
+      int no = HistoryOrdersTotal();
+      datetime first = 0;
+      for(int j = 0; j < no; j++)
+        {
+         ulong o = HistoryOrderGetTicket(j);
+         if(o == 0) continue;
+         datetime ts = (datetime)HistoryOrderGetInteger(o, ORDER_TIME_SETUP);
+         if(first == 0 || ts < first)
+           {
+            first = ts;
+            sl0 = HistoryOrderGetDouble(o, ORDER_SL);
+            tp0 = HistoryOrderGetDouble(o, ORDER_TP);
+           }
+        }
+      bool isOpen = outVol < vol - 1e-9;
+      double slNow = 0, pout = 0;
+      if(isOpen)
+        {
+         if(PositionSelectByTicket(pid))
+           {
+            slNow = PositionGetDouble(POSITION_SL);
+            if(sl0 <= 0) sl0 = slNow;
+            if(tp0 <= 0) tp0 = PositionGetDouble(POSITION_TP);
+           }
+         tout = TimeCurrent();
+         pout = side > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_BID) : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         exitc = "OPEN";
+        }
+      else pout = outVol > 0 ? outVal / outVol : 0;
+      double hi, lo, phi, plo;
+      datetime thi, tlo, pthi, ptlo;
+      double mfe = 0, mae = 0, pf = 0, pa = 0;
+      datetime tmfe = 0, tmae = 0;
+      if(ExpRange(_Symbol, tin, tout, hi, lo, thi, tlo))
+        {
+         mfe = side > 0 ? hi - pin : pin - lo;
+         mae = side > 0 ? pin - lo : hi - pin;
+         tmfe = side > 0 ? thi : tlo;
+         tmae = side > 0 ? tlo : thi;
+        }
+      datetime tEnd = tout + 86400;
+      if(tEnd > TimeCurrent()) tEnd = TimeCurrent();
+      if(!isOpen && ExpRange(_Symbol, tout, tEnd, phi, plo, pthi, ptlo))
+        {
+         pf = side > 0 ? phi - pout : pout - plo;
+         pa = side > 0 ? pout - plo : phi - pout;
+        }
+      string line = IntegerToString((long)pid) + "," + _Symbol + "," + ExpClean(strat) + "," + IntegerToString(mg) + "," + (side > 0 ? "buy" : "sell") + "," +
+                    DoubleToString(vol, 2) + "," + ExpTs(tin) + "," + ExpPx(_Symbol, pin) + "," + ExpPx(_Symbol, sl0) + "," + ExpPx(_Symbol, tp0) + "," +
+                    ExpTs(tout) + "," + ExpPx(_Symbol, pout) + "," + DoubleToString(net, 2) + "," + ExpClean(exitc) + "," + (isOpen ? "1" : "0") + "," +
+                    ExpPx(_Symbol, slNow) + "," + ExpPx(_Symbol, MathAbs(pin - sl0)) + "," + ExpPx(_Symbol, mfe) + "," + ExpPx(_Symbol, mae) + "," +
+                    (tmfe > 0 ? ExpTs(tmfe) : "") + "," + (tmae > 0 ? ExpTs(tmae) : "") + "," + ExpPx(_Symbol, pf) + "," + ExpPx(_Symbol, pa) + "\n";
+      FileWriteString(h, line);
+     }
+   FileClose(h);
+  }
+
+void ExportBars()
+  {
+   MqlRates r[];
+   int n = CopyRates(_Symbol, PERIOD_M5, TimeCurrent() - 45 * 86400, TimeCurrent(), r);
+   if(n <= 0) return;
+   string fn = "9algo\\export_bars_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) + "_" + Slug(_Symbol) + ".csv";
+   int h = FileOpen(fn, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE) return;
+   FileWriteString(h, "time,open,high,low,close,spread\n");
+   for(int i = 0; i < n; i++)
+      FileWriteString(h, ExpTs(r[i].time) + "," + DoubleToString(r[i].open, g_digits) + "," + DoubleToString(r[i].high, g_digits) + "," +
+                      DoubleToString(r[i].low, g_digits) + "," + DoubleToString(r[i].close, g_digits) + "," + IntegerToString(r[i].spread) + "\n");
+   FileClose(h);
+  }
+
+void ExportMaybe()
+  {
+   if(!I_ExportData || MQLInfoInteger(MQL_TESTER)) return;
+   int gap = g_expDirty ? 30 : 3600;
+   if(TimeLocal() - g_expLast < gap) return;
+   g_expLast = TimeLocal();
+   g_expDirty = false;
+   ExportTrades();
+   ExportBars();
+  }
+
 void OnDeinit(const int reason)
   {
    EventKillTimer();
@@ -5528,6 +5753,7 @@ void OnTimer()
    MaintainCommon();
    VoProcess();
    CheckReloadFlag();
+   ExportMaybe();
   }
 
 void OnTick()
@@ -5572,7 +5798,10 @@ void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest 
          if(entry == DEAL_ENTRY_IN)
             NotifyTrade(g_s[i].tag + " " + side + " " + DoubleToString(HistoryDealGetDouble(trans.deal, DEAL_VOLUME), 2) + " @ " + DoubleToString(HistoryDealGetDouble(trans.deal, DEAL_PRICE), g_digits));
          else
+           {
+            g_expDirty = true;
             NotifyTrade(g_s[i].tag + " close P/L " + DoubleToString(HistoryDealGetDouble(trans.deal, DEAL_PROFIT) + HistoryDealGetDouble(trans.deal, DEAL_SWAP) + HistoryDealGetDouble(trans.deal, DEAL_COMMISSION), 2));
+           }
          g_panelCheck = 0;
         }
   }

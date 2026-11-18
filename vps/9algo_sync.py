@@ -12,6 +12,8 @@ Tiap siklus (default 90 detik):
   3. CEK deploy/tester.json {"id": "...", "jobs": [...]} -> jalankan backtest di terminal MT5 TERPISAH (portable,
      C:/9algo_tester/mt5, prioritas rendah, login investor) lalu kirim ringkasan hasil ke status.
   4. Update diri sendiri kalau vps/9algo_sync.py di repo berubah.
+  5. (1.7) Kirim ekspor EA (Common/Files/9algo/export_*.csv: bar M5 + trade MFE/MAE) ke branch `export`
+     kalau berubah, paling sering tiap 20 menit.
 
 Tidak bisa mengirim order / mengubah setelan akun. Aksi hanya: compile + pasang file EA, dan backtest di terminal terpisah.
 Konfigurasi: sync_config.json (dibuat setup_sync.bat): {"owner":..,"repo":..,"token":..,"interval":90,"allow_deploy":true}
@@ -28,7 +30,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.6"
+VERSION = "1.7"
 
 
 def log(msg):
@@ -192,6 +194,38 @@ def push_status(st: dict):
         c, r, _ = gh("POST", "/git/refs", {"ref": "refs/heads/status", "sha": com["sha"]})
     if c not in (200, 201):
         raise RuntimeError(f"ref {c} {r}")
+
+
+def push_export(state):
+    """Branch `export` = ekspor EA (v2.90+): bar M5 per simbol + riwayat trade dengan MFE/MAE.
+    Satu commit tanpa parent, ditimpa; dikirim hanya kalau file berubah, paling sering tiap 20 menit."""
+    fs = sorted(glob.glob(str(common_files() / "export_*.csv")))
+    if not fs:
+        return
+    sig = ";".join(f"{Path(f).name}:{int(os.path.getmtime(f))}" for f in fs)
+    if sig == state.get("export_sig") or time.time() - state.get("export_t", 0) < 1200:
+        return
+    files = [{"path": "README.md", "mode": "100644", "type": "blob",
+              "content": "Ekspor 9algo (bar M5 + trade MFE/MAE), ditimpa otomatis oleh 9algo_sync.py. Jangan diedit.\n"}]
+    for f in fs:
+        if os.path.getsize(f) > 8 * 1024 * 1024:
+            continue
+        files.append({"path": Path(f).name, "mode": "100644", "type": "blob", "content": read_any(Path(f))})
+    c, tree, _ = gh("POST", "/git/trees", {"tree": files})
+    if c != 201:
+        raise RuntimeError(f"export tree {c} {str(tree)[:200]}")
+    c, com, _ = gh("POST", "/git/commits", {"message": "export " + time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "tree": tree["sha"], "parents": []})
+    if c != 201:
+        raise RuntimeError(f"export commit {c} {str(com)[:200]}")
+    c, r, _ = gh("PATCH", "/git/refs/heads/export", {"sha": com["sha"], "force": True})
+    if c == 422 or c == 404:
+        c, r, _ = gh("POST", "/git/refs", {"ref": "refs/heads/export", "sha": com["sha"]})
+    if c not in (200, 201):
+        raise RuntimeError(f"export ref {c} {str(r)[:200]}")
+    state["export_sig"] = sig
+    state["export_t"] = time.time()
+    save_state(state)
+    log(f"ekspor terkirim ({len(files) - 1} file)")
 
 
 def load_state():
@@ -553,6 +587,10 @@ def main():
             save_state(state)
             push_status(collect(state.get("last_compile")))
             log("status terkirim")
+            try:
+                push_export(state)
+            except Exception as e:
+                log("[!] ekspor: " + str(e))
         except Exception as e:
             log("[!] " + str(e))
             traceback.print_exc()

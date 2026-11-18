@@ -1,6 +1,6 @@
 {
-  "id": "v2.89-1",
+  "id": "v2.90-1",
   "file": "src/9algo_live.mq5",
   "deploy": true,
-  "note": "backtest lebih cepat (Monte Carlo/statistik/file I/O dikurangi saat tester); live tidak berubah"
+  "note": "ekspor bar M5 + trade MFE/MAE; order market tidak ikut di-OrderDelete; close posisi tidak terkirim dua kali; log penolakan cap arah tidak spam. Logika entry/exit live tidak berubah."
 }
