@@ -4,7 +4,7 @@
 //| Tambahan 10algo: panel, tombol, penjaga risiko opsional,         |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.02"
+#property version   "1.03"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel & penjaga risiko"
 
 #include <Trade/Trade.mqh>
@@ -25,6 +25,7 @@ input double InpMaxDrawdownPct       = 25.0;      // Berhenti buka hari baru jik
 input group "=== 10algo: tampilan ==="
 input int    InpPanelX               = 10;        // Posisi panel X
 input int    InpPanelY               = 26;        // Posisi panel Y
+input double InpPanelScale           = 0.0;       // Skala panel (0 = otomatis ikut DPI layar; mis. 0.85 = lebih kecil)
 input bool   InpTheme                = true;      // Tema chart gelap ala 9algo
 input bool   InpDrawWindow           = true;      // Garis jendela 10:20 / 10:31 London di chart
 input int    InpLocalUTCOffset       = 7;         // Jam lokal di panel: selisih dari UTC (WIB = 7, WITA = 8, WIT = 9)
@@ -826,6 +827,12 @@ void PRect(string n, int x, int y, int w, int h, color c, color edge = clrNONE, 
    ObjectSetString(0, nm, OBJPROP_TOOLTIP, tip);
   }
 
+// kartu: dibuat sekali (tinggi diisi di akhir DrawPanel); jangan diubah ke 1 piksel tiap redraw -> berkedip
+void PCard(string n, int x, int y, int w)
+  {
+   if(ObjectFind(0, g_pfx + n) < 0) PRect(n, x, y, w, 1, C_CARD, C_EDGE);
+  }
+
 void PText(string n, string t, int x, int y, int size, color c, bool bold = false, ENUM_ANCHOR_POINT anc = ANCHOR_LEFT_UPPER, string tip = "\n")
   {
    string nm = g_pfx + n;
@@ -1100,7 +1107,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.02", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.03", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1109,7 +1116,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
 
    // --- kartu 1: hari ini
    int cy = y;
-   PRect("c1", X, cy, W, 1, C_CARD, C_EDGE);
+   PCard("c1", X, cy, W);
    PText("c1_t", "HARI INI", X + pad, cy + S(8), 7, C_GOLD, true);
    int r = cy + S(26);
    if(ldnOK)
@@ -1153,7 +1160,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
 
    // --- kartu 2: sinyal A10
    cy = y;
-   PRect("c2", X, cy, W, 1, C_CARD, C_EDGE);
+   PCard("c2", X, cy, W);
    bool real = (g_prepared && g_u > 0);
    PText("c2_t", real ? "SINYAL HARI INI" : "SINYAL (PRATINJAU)", X + pad, cy + S(8), 7, C_GOLD, true);
    r = cy + S(26);
@@ -1186,7 +1193,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
 
    // --- kartu 3: risiko
    cy = y;
-   PRect("c3", X, cy, W, 1, C_CARD, C_EDGE);
+   PCard("c3", X, cy, W);
    PText("c3_t", "RISIKO", X + pad, cy + S(8), 7, C_GOLD, true);
    r = cy + S(26);
    double bal = AccountInfoDouble(ACCOUNT_BALANCE), eq = AccountInfoDouble(ACCOUNT_EQUITY);
@@ -1213,7 +1220,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
 
    // --- kartu 4: hasil
    cy = y;
-   PRect("c4", X, cy, W, 1, C_CARD, C_EDGE);
+   PCard("c4", X, cy, W);
    PText("c4_t", "HASIL", X + pad, cy + S(8), 7, C_GOLD, true);
    r = cy + S(26);
    Row("c4r1", "Saldo  |  ekuitas", Usd(bal) + "  |  " + Usd(eq), X, W, r, C_TXT); r += lh;
@@ -1273,7 +1280,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.02", true);
+   JAdd(s, "version", "1.03", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1366,6 +1373,8 @@ void CheckReloadFlag()
       if(mnt >= T_MULAI - 5 && mnt <= T_TUTUP + 4) return;
      }
    g_reloadSeen = v;
+   ObjectsDeleteAll(0, g_pfx);                          // panel jangan ikut tersimpan di template (urutan lapisan jadi kacau)
+   ChartRedraw();
    string tpl = "10algo_reload_" + IntegerToString(ChartID() % 100000);
    if(ChartSaveTemplate(0, tpl))
      {
@@ -1573,13 +1582,14 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.02 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
+      PrintFormat("10algo v1.03 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "", g_lots, InpLots, vstep,
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER));
    ArrayFree(g_rDay); ArrayFree(g_rVal);
    RLoad();
    ReadClock();
-   g_sc = MathMax(1.0, TerminalInfoInteger(TERMINAL_SCREEN_DPI) / 96.0);
+   ObjectsDeleteAll(0, g_pfx);                          // sisa panel lama / dari template -> gambar ulang dengan urutan benar
+   g_sc = (InpPanelScale > 0.0 ? InpPanelScale : MathMax(1.0, TerminalInfoInteger(TERMINAL_SCREEN_DPI) / 96.0));
    g_paused = (MQLInfoInteger(MQL_TESTER) == 0 && GlobalVariableCheck(PauseKey()) && GlobalVariableGet(PauseKey()) > 0.5);
    g_peak = (MQLInfoInteger(MQL_TESTER) == 0 && GlobalVariableCheck(PeakKey())) ? GlobalVariableGet(PeakKey()) : 0.0;
    UpdatePeak();

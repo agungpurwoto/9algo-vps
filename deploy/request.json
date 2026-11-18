@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.02-1",
+  "id": "10algo-1.03-1",
   "target": "10algo",
   "file": "src/10algo.mq5",
   "deploy": true,
-  "note": "panel 10algo: tampilkan jam WIB"
+  "note": "panel 10algo: perbaikan kedip & blank setelah reload, input skala panel"
 }
