@@ -26,7 +26,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "9algo by Singularity"
 #property link        "https://singularity.id"
-#property version     "2.90"
+#property version     "2.91"
 #property description "9algo by Singularity - 9 algoritma dalam 1 EA untuk XAUUSD, XAGUSD, USDJPY, NQ"
 #property description "Prop-firm guard: Max Daily Loss, Max Loss (trailing HWM), cap total risk, panel target & statistik"
 #include <Trade\Trade.mqh>
@@ -140,9 +140,12 @@ input string          NewsExtraCurrencies   = "";     // Tambahan mata uang, mis
 input bool            I_NewsClosePositions    = false;  // Tutup posisi terbuka saat masuk window news
 bool NewsClosePositions = false;   // nilai efektif (preset terbaru, atau input di atas jika UsePresetTerbaru=false)
 input bool            I_ExportData            = true;   // v2.90: ekspor bar M5 + riwayat trade (MFE/MAE) ke Common\Files\9algo untuk analisis (dibaca 9algo_sync)
-input double          I_BE_TriggerR           = 0.0;    // v2.90: geser SL ke impas saat profit >= X R (0 = MATI). Hanya strategi di daftar bawah
+input double          I_BE_TriggerR           = 1.5;    // v2.91: geser SL ke impas saat profit >= X R (0 = MATI). Hanya strategi di daftar bawah
 input double          I_BE_LockR              = 0.0;    // v2.90: SL impas + kunci X R (0 = tepat di harga entry)
-input string          I_BE_Strategies         = "Round-AU,Narrow-AU,Narrow-JPY,Week-AU,BigDay-AU,BigDay-AG,Tokyo-JPY"; // v2.90: strategi yang ikut aturan impas (Noise tidak: sudah punya exit sendiri)
+input string          I_BE_Strategies         = "Round-AU,Narrow-AU,Narrow-JPY"; // v2.90: strategi yang ikut aturan impas (Noise tidak: sudah punya exit sendiri)
+input bool            I_PendingFreeEntry      = true;   // v2.91: pending yang belum terisi TIDAK menghalangi entry market; kalau posisi baru membuat cap terlampaui, pending ditarik ke antrean siaga & dipasang lagi saat ada ruang
+input double          I_MinLotMaxOverRisk     = 1.5;    // v2.91: lot minimum hanya boleh dipakai jika risk-nya <= X kali target risk strategi (0 = tanpa batas ini)
+input double          I_SpreadMaxPctSL        = 10.0;   // v2.91: tolak entry jika spread > X% jarak SL (0 = mati). Melengkapi filter spread vs rata-rata
 input int             I_NewsHardMin           = 3;      // Aturan firm (High Stakes: tidak boleh eksekusi order +-2 menit news): blok + tarik order di broker +-X menit, selalu aktif
 int NewsHardMin = 3;   // nilai efektif (preset terbaru, atau input di atas jika UsePresetTerbaru=false)
 input bool            ResetGuardState       = false;  // true = hapus semua state tersimpan (halt, HWM, tanggal mulai, pause) saat init
@@ -824,6 +827,7 @@ double TicketRiskMoney(string sym, bool isBuy, double vol, double price, double 
 //--- total risk terbuka milik 9algo, semua simbol (posisi + pending)
 //    Pending OCO (buy stop + sell stop dari strategi yang sama) hanya bisa terisi salah satu,
 //    jadi per (simbol, magic) yang dihitung hanya pending dengan risk terbesar, bukan dijumlah.
+bool g_inclPend = true;   // v2.91: false = hitung cap hanya dari posisi (pending belum terisi tidak menghalangi entry market)
 long g_capMagic = 0;   // magic yang sedang dipasang: pending lain dengan magic ini (OCO) tidak dihitung, karena hanya 1 sisi bisa terisi
 double OpenRiskTotal()
   {
@@ -837,6 +841,7 @@ double OpenRiskTotal()
       s += TicketRiskMoney(PositionGetString(POSITION_SYMBOL), isBuy, PositionGetDouble(POSITION_VOLUME),
                            PositionGetDouble(POSITION_PRICE_OPEN), PositionGetDouble(POSITION_SL));
      }
+   if(!g_inclPend) return s;
    string keys[];
    double maxr[];
    int nk = 0;
@@ -872,6 +877,7 @@ double DirectionalRiskOpen(int dir)
       if((dir > 0) != isBuy) continue;
       s += TicketRiskMoney(PositionGetString(POSITION_SYMBOL), isBuy, PositionGetDouble(POSITION_VOLUME), PositionGetDouble(POSITION_PRICE_OPEN), PositionGetDouble(POSITION_SL));
      }
+   if(!g_inclPend) return s;
    for(int i = OrdersTotal() - 1; i >= 0; i--)
      {
       ulong tk = OrderGetTicket(i);
@@ -942,7 +948,7 @@ bool TempBlocked()
   }
 
 //--- satu-satunya pintu masuk ukuran lot: guard + cap total risk ada di sini
-double LotsFor(double riskDist, double riskPct)
+double LotsForCore(double riskDist, double riskPct)
   {
    g_lotWhy = "";
    g_lastRiskDist = riskDist; g_lastRiskPct = riskPct; g_lastMlCap = 0;
@@ -972,6 +978,13 @@ double LotsFor(double riskDist, double riskPct)
       if(cpl > 0) lpl += cpl;
      }
    double money = RiskBase() * riskPct * RiskScale * g_effMult / 100.0;
+   double money0 = money;   // target risk strategi (sebelum dipotong sisa cap)
+   if(I_SpreadMaxPctSL > 0)
+     {
+      double spPx = SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      if(spPx > riskDist * I_SpreadMaxPctSL / 100.0)
+        { g_lotWhy = "spread " + DoubleToString(100.0 * spPx / riskDist, 1) + "% jarak SL > " + DoubleToString(I_SpreadMaxPctSL, 0) + "%"; return 0; }
+     }
    if(g_openCapPct > 0 && capOn)
      {
       double room = RiskBase() * g_openCapPct / 100.0 - OpenRiskTotal();
@@ -997,6 +1010,8 @@ double LotsFor(double riskDist, double riskPct)
       double mlCap = g_fast ? MinLotMaxRiskFastPct : MinLotMaxRiskPct;   // Fast challenge: akun kecil + SL lebar tetap boleh 0.01 lot
       if(g_dirCapPct > 0) mlCap = MathMin(mlCap, g_dirCapPct);            // jangan lolos di sini lalu pasti ditolak cap arah
       g_lastMlCap = mlCap;
+      if(I_MinLotMaxOverRisk > 0 && money0 > 0 && minRisk > money0 * I_MinLotMaxOverRisk)
+        { g_lotWhy = "lot min = risk " + DoubleToString(minRisk, 2) + " > " + DoubleToString(I_MinLotMaxOverRisk, 1) + "x target " + DoubleToString(money0, 2); return 0; }
       if(minRisk > RiskBase() * mlCap / 100.0)
         { g_lotWhy = "lot min = risk " + DoubleToString(100 * minRisk / RiskBase(), 2) + "% > batas " + DoubleToString(mlCap, 2) + "%" +
                      (!g_fast && IsEval() && ChallengeStyle == Style_Fast ? " (klik CHALLENGE di panel -> batas " + DoubleToString(MathMin(MinLotMaxRiskFastPct, FastDirCapPct), 1) + "%)" : ""); return 0; }
@@ -1299,6 +1314,19 @@ void CapUnlock(bool sent)
    g_capLockHeld = false;
   }
 // kecilkan lot supaya risk tiket ini muat di sisa budget (cap total). false = tidak muat sama sekali
+// v2.91: ukuran lot dihitung dari posisi saja (pending yang belum terisi tidak mengecilkan / menolak entry).
+// Pending yang akan dipasang tetap dicek penuh (posisi + pending lain) di SendPendingReal.
+double LotsFor(double riskDist, double riskPct)
+  {
+   bool keep = g_inclPend;
+   if(I_PendingFreeEntry) g_inclPend = false;
+   double l = LotsForCore(riskDist, riskPct);
+   g_inclPend = keep;
+   return l;
+  }
+
+void EnforcePendingCaps();
+
 bool FitCap(bool buy, double &lots, double px, double sl)
   {
    if(g_openCapPct <= 0 || sl <= 0) return true;
@@ -1336,7 +1364,11 @@ bool SendMarket(long magic, int dir, double lots, double sl, double tp, string c
       lots = NormalizeDouble(nl, (int)MathMax(0, MathCeil(-MathLog10(step) - 1e-9)));
      }
    if(!CapLock()) { g_dirWhy = "antrian kirim order sibuk"; return false; }
-   if(!FitCap(dir > 0, lots, px, sl) || !DirectionalCapOk(dir > 0, lots, px, sl)) { CapUnlock(false); return false; }
+   bool keepInc = g_inclPend;
+   if(I_PendingFreeEntry) g_inclPend = false;            // v2.91: entry market hanya dibatasi posisi terbuka
+   bool capOk = FitCap(dir > 0, lots, px, sl) && DirectionalCapOk(dir > 0, lots, px, sl);
+   g_inclPend = keepInc;
+   if(!capOk) { CapUnlock(false); return false; }
    g_trade.SetExpertMagicNumber(magic);
    bool ok;
    if(dir > 0)
@@ -1346,6 +1378,7 @@ bool SendMarket(long magic, int dir, double lots, double sl, double tp, string c
    uint rc = g_trade.ResultRetcode();
    bool done = ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_PLACED || rc == TRADE_RETCODE_DONE_PARTIAL);
    CapUnlock(done);
+   if(done) EnforcePendingCaps();                        // posisi baru -> pending yang kini tidak muat ditarik
    return done;
   }
 
@@ -4550,7 +4583,7 @@ void DrawPanel()
       plc[npl] = CLR_DIM; npl++;
      }
    string rb = (RiskMode == Compounding_PercentOfCurrentEquity) ? "equity" : Money(g_initBal) + " " + cur;
-   string ft = (UsePresetTerbaru ? "v2.90 preset otomatis   risk base " : "v2.90 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
+   string ft = (UsePresetTerbaru ? "v2.91 preset otomatis   risk base " : "v2.91 preset manual   risk base ") + rb + "   x" + DoubleToString(RiskScale, 2) + "   Max Loss " + (MaxLossMode == MaxLoss_TrailingFromHWM ? "trailing HWM" : "statis") +
                "   push " + (PushAlerts ? "on" : "off") + "   weekend close " + (CloseBeforeWeekend ? "on" : "off");
    long tickAge = (long)(TimeCurrent() - (datetime)SymbolInfoInteger(_Symbol, SYMBOL_TIME));
    string clk = "NY " + TimeToString(ServerToNY(TimeCurrent()), TIME_MINUTES) + "   LDN " + TimeToString(ServerToLondon(TimeCurrent()), TIME_MINUTES) +
@@ -5729,6 +5762,61 @@ void ExportBars()
 // v2.90: aturan impas (break-even) opsional per strategi. Aktif hanya jika I_BE_TriggerR > 0.
 // R = jarak entry ke SL awal. Selama SL masih di sisi rugi dan profit sudah >= TriggerR x R, SL digeser ke entry (+ LockR x R).
 // Sekali SL sudah di sisi impas/profit, aturan ini tidak menyentuh posisi itu lagi.
+// v2.91: jaga risiko tetap di bawah cap walau entry market tidak dihalangi pending.
+// Kalau posisi + pending asli melebihi cap arah / cap total, pending simbol ini yang paling jauh dari harga ditarik
+// (kembali ke antrean siaga, dipasang lagi saat ada ruang). Satu penarikan per arah per panggilan; dipanggil tiap tick,
+// tiap timer 5 dtk, setelah entry market, dan tiap ada deal baru di akun.
+void WithdrawPend(ulong tk, string why)
+  {
+   if(!g_trade.OrderDelete(tk)) return;
+   for(int i = 0; i < ArraySize(g_vo); i++)
+      if(g_vo[i].tk == tk) { g_vo[i].tk = 0; g_vo[i].why = "ditarik: " + why; g_vo[i].lastTry = TimeCurrent(); g_voDirty = true; }
+   Print("9algo: pending #", tk, " ditarik (", why, ")");
+  }
+
+ulong FarthestPend(int dir)
+  {
+   ulong best = 0;
+   double bd = -1;
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK), bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      ulong tk = OrderGetTicket(i);
+      if(tk == 0 || OrderGetString(ORDER_SYMBOL) != _Symbol || !IsOurMagic(OrderGetInteger(ORDER_MAGIC))) continue;
+      long t = OrderGetInteger(ORDER_TYPE);
+      if(!IsPendingOrderType(t)) continue;
+      bool buy = (t == ORDER_TYPE_BUY_STOP || t == ORDER_TYPE_BUY_LIMIT || t == ORDER_TYPE_BUY_STOP_LIMIT);
+      if(dir != 0 && (dir > 0) != buy) continue;
+      double d = MathAbs(OrderGetDouble(ORDER_PRICE_OPEN) - (buy ? ask : bid));
+      if(d > bd) { bd = d; best = tk; }
+     }
+   return best;
+  }
+
+void EnforcePendingCaps()
+  {
+   if(!I_PendingFreeEntry) return;
+   bool keep = g_inclPend;
+   long cm = g_capMagic;
+   g_inclPend = true; g_capMagic = 0;
+   if(g_dirCapPct > 0)
+     {
+      double cap = RiskBase() * g_dirCapPct / 100.0;
+      for(int d = -1; d <= 1; d += 2)
+         if(DirectionalRiskOpen(d) > cap + 0.01)
+           {
+            ulong tk = FarthestPend(d);
+            if(tk > 0) WithdrawPend(tk, "cap arah " + (d > 0 ? "BUY" : "SELL") + " " + DoubleToString(g_dirCapPct, 1) + "% terisi posisi");
+           }
+     }
+   if(g_openCapPct > 0 && OpenRiskTotal() > RiskBase() * g_openCapPct / 100.0 + 0.01)
+     {
+      ulong tk = FarthestPend(0);
+      if(tk > 0) WithdrawPend(tk, "cap total risk " + DoubleToString(g_openCapPct, 1) + "% terisi posisi");
+     }
+   g_inclPend = keep; g_capMagic = cm;
+  }
+
 void ManageBreakEven()
   {
    if(I_BE_TriggerR <= 0) return;
@@ -5787,6 +5875,7 @@ void OnDeinit(const int reason)
 void OnTimer()
   {
    MaintainCommon();
+   EnforcePendingCaps();
    VoProcess();
    CheckReloadFlag();
    ExportMaybe();
@@ -5808,6 +5897,7 @@ void OnTick()
         }
    g_curPaused = false; g_curAuto = false; g_curVirt = false;
    ManageBreakEven();
+   EnforcePendingCaps();
    VoProcess();
   }
 
@@ -5815,6 +5905,7 @@ void OnTradeTransaction(const MqlTradeTransaction &trans, const MqlTradeRequest 
   {
    if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
       return;
+   EnforcePendingCaps();
    if(!HistoryDealSelect(trans.deal))
       return;
    if(HistoryDealGetInteger(trans.deal, DEAL_TYPE) == DEAL_TYPE_BALANCE)

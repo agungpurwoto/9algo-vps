@@ -1,6 +1,6 @@
 {
-  "id": "v2.90-2",
+  "id": "v2.91-1",
   "file": "src/9algo_live.mq5",
   "deploy": true,
-  "note": "tambah opsi impas (I_BE_TriggerR) default MATI; perilaku live sama dengan v2.90-1"
+  "note": "pending tidak menghalangi entry market (ditarik bila cap terlampaui); batas lot minimum 1.5x target risk; filter spread 10% jarak SL; BE @1.5R ON untuk Round-AU, Narrow-AU, Narrow-JPY"
 }
