@@ -1,6 +1,7 @@
 {
-  "id": "10algo-1.00-uji1",
+  "id": "10algo-1.01-1",
+  "target": "10algo",
   "file": "src/10algo.mq5",
-  "deploy": false,
-  "note": "compile uji 10algo saja, tidak dipasang ke chart"
+  "deploy": true,
+  "note": "pasang 10algo ke terminal Vantage (C:/Program Files/Vantage Markets MT5 Terminal)"
 }

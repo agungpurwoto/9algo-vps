@@ -4,7 +4,7 @@
 //| Tambahan 10algo: panel, tombol, penjaga risiko opsional,         |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.00"
+#property version   "1.01"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel & penjaga risiko"
 
 #include <Trade/Trade.mqh>
@@ -1095,7 +1095,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.00", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.01", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1262,7 +1262,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.00", true);
+   JAdd(s, "version", "1.01", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1327,12 +1327,49 @@ void UpdatePeak()
      }
   }
 
+// 10algo v1.01: dipasang ulang dari VPS (9algo_sync menulis MQL5\Files\10algo_reload.txt) -> EA memuat ulang dirinya
+// lewat template chart. DITUNDA selama ada posisi terbuka atau dalam 10:15-10:35 London, supaya hitungan lapis
+// hari ini tidak ter-reset di tengah jendela lelang.
+string g_reloadSeen = "#";
+string ReadReloadFlag()
+  {
+   if(MQLInfoInteger(MQL_TESTER) != 0 || !FileIsExist("10algo_reload.txt")) return "";
+   int h = FileOpen("10algo_reload.txt", FILE_READ | FILE_TXT | FILE_ANSI | FILE_SHARE_READ | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE) return g_reloadSeen;
+   string v = FileReadString(h);
+   FileClose(h);
+   return v;
+  }
+
+void CheckReloadFlag()
+  {
+   string v = ReadReloadFlag();
+   if(g_reloadSeen == "#") { g_reloadSeen = v; return; }
+   if(v == "" || v == g_reloadSeen) return;
+   if(CountPositions() > 0) return;
+   datetime ldn;
+   if(ServerToLondon(TimeCurrent(), ldn))
+     {
+      MqlDateTime L; TimeToStruct(ldn, L);
+      int mnt = L.hour * 60 + L.min;
+      if(mnt >= T_MULAI - 5 && mnt <= T_TUTUP + 4) return;
+     }
+   g_reloadSeen = v;
+   string tpl = "10algo_reload_" + IntegerToString(ChartID() % 100000);
+   if(ChartSaveTemplate(0, tpl))
+     {
+      Print("10algo: versi baru terpasang (", v, ") -> EA dimuat ulang");
+      ChartApplyTemplate(0, tpl);
+     }
+  }
+
 void Housekeeping()
   {
    UpdatePeak();
    if(g_statsDirty || TimeCurrent() - g_statsAt >= 30) ComputeStats();
    if(!g_prepared && !g_fatal && (ArraySize(g_wkStart) > 0 || g_clockOK)) Preview();
    if(TimeCurrent() - g_stateAt >= 30) { g_stateAt = TimeCurrent(); WriteState(); }
+   CheckReloadFlag();
   }
 
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
@@ -1525,7 +1562,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.00 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
+      PrintFormat("10algo v1.01 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "", g_lots, InpLots, vstep,
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER));
    ArrayFree(g_rDay); ArrayFree(g_rVal);

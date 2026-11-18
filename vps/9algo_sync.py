@@ -12,6 +12,8 @@ Tiap siklus (default 90 detik):
   3. CEK deploy/tester.json {"id": "...", "jobs": [...]} -> jalankan backtest di terminal MT5 TERPISAH (portable,
      C:/9algo_tester/mt5, prioritas rendah, login investor) lalu kirim ringkasan hasil ke status.
   4. Update diri sendiri kalau vps/9algo_sync.py di repo berubah.
+  6. (1.8) request.json boleh berisi "target": "10algo" -> compile/pasang ke terminal kedua (Vantage, 10algo).
+     Status juga memuat terminal_10algo dan pemakaian RAM.
   5. (1.7) Kirim ekspor EA (Common/Files/9algo/export_*.csv: bar M5 + trade MFE/MAE) ke branch `export`
      kalau berubah, paling sering tiap 20 menit.
 
@@ -30,7 +32,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.7"
+VERSION = "1.8"
 
 
 def log(msg):
@@ -91,6 +93,53 @@ def main_dir():
     return ds[0] if ds else None
 
 
+# ---- terminal kedua: 10algo (akun broker sendiri) ----
+T10_INSTALL = (CFG.get("terminals") or {}).get("10algo", r"C:\Program Files\Vantage Markets MT5 Terminal")
+T10_EA = "10algo.mq5"
+
+
+def norm_path(p):
+    return str(p).strip().strip("\ufeff").rstrip("\\/").lower()
+
+
+def data_dir_for_install(inst):
+    """Data folder terminal yang origin.txt-nya menunjuk ke folder instalasi `inst` (atau folder portable itu sendiri)."""
+    want = norm_path(inst)
+    if (Path(inst) / "MQL5" / "Experts").is_dir():           # mode portable
+        return Path(inst)
+    for d in data_dirs():
+        o = d / "origin.txt"
+        if o.exists() and norm_path(read_any(o)) == want:
+            return d
+    return None
+
+
+def target_info(name):
+    """(data_dir, ea_file, metaeditor, reload_flag, ci_folder) untuk target deploy."""
+    if name == "10algo":
+        d = data_dir_for_install(T10_INSTALL)
+        me = Path(T10_INSTALL) / "metaeditor64.exe"
+        return d, T10_EA, (me if me.exists() else None), "10algo_reload.txt", "10algo_ci"
+    d = main_dir()
+    return d, EA_FILE, None, "9algo_reload.txt", "9algo_ci"
+
+
+def mem_info():
+    try:
+        import ctypes
+
+        class MS(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong), ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong), ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+        m = MS()
+        m.dwLength = ctypes.sizeof(MS)
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
+        return {"total_mb": int(m.ullTotalPhys / 1048576), "free_mb": int(m.ullAvailPhys / 1048576), "load_pct": int(m.dwMemoryLoad)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
 def common_files():
     return Path(os.environ.get("APPDATA", "")) / "MetaQuotes" / "Terminal" / "Common" / "Files" / "9algo"
 
@@ -120,8 +169,8 @@ def metaeditor(d: Path):
     return None
 
 
-def compile_file(d: Path, src: Path):
-    me = metaeditor(d)
+def compile_file(d: Path, src: Path, me=None):
+    me = me or metaeditor(d)
     if not me:
         return {"ok": False, "result": "metaeditor64.exe tidak ditemukan (isi mt5_dir di sync_config.json)", "errors": [], "warnings": []}
     logf = Path(tempfile.gettempdir()) / "9algo_sync_compile.log"
@@ -170,6 +219,22 @@ def collect(last_compile):
         except Exception as e:
             states[Path(f).name] = {"error": str(e)}
     st["ea_state"] = states
+    st["memory"] = mem_info()
+    try:
+        d10 = data_dir_for_install(T10_INSTALL)
+        t10 = {"install": T10_INSTALL, "installed": Path(T10_INSTALL).exists(), "data_dir": str(d10) if d10 else None}
+        if d10:
+            src = d10 / "MQL5" / "Experts" / T10_EA
+            if src.exists():
+                t10["ea_version"] = next((l.strip() for l in read_any(src).splitlines() if l.startswith("#property version")), "")
+                ex5 = src.with_suffix(".ex5")
+                t10["ex5_mtime"] = time.ctime(ex5.stat().st_mtime) if ex5.exists() else None
+            day = time.strftime("%Y%m%d")
+            t10["experts_log"] = tail(d10 / "MQL5" / "Logs" / f"{day}.log", 150)
+            t10["journal"] = tail(d10 / "logs" / f"{day}.log", 60)
+        st["terminal_10algo"] = t10
+    except Exception as e:
+        st["terminal_10algo"] = {"error": str(e)}
     return st
 
 
@@ -291,42 +356,45 @@ def restart_terminal(d: Path):
 
 
 def handle_request(req):
-    d = main_dir()
+    target = req.get("target", "9algo")
+    d, ea_file, me, flag, ci_name = target_info(target)
     if not d:
-        return {"id": req["id"], "ok": False, "result": "folder data MT5 tidak ditemukan"}
-    src_bytes = fetch_file(req.get("file", f"src/{EA_FILE}"))
-    ci_dir = d / "MQL5" / "Experts" / "9algo_ci"
+        return {"id": req["id"], "ok": False, "target": target,
+                "result": "folder data MT5 tidak ditemukan" + (f" untuk {T10_INSTALL} (buka terminalnya sekali dulu)" if target == "10algo" else "")}
+    src_bytes = fetch_file(req.get("file", f"src/{ea_file}"))
+    ci_dir = d / "MQL5" / "Experts" / ci_name
     ci_dir.mkdir(parents=True, exist_ok=True)
-    ci_src = ci_dir / EA_FILE
+    ci_src = ci_dir / ea_file
     ci_src.write_bytes(src_bytes)
-    log(f"compile uji {req['id']} ...")
-    test = compile_file(d, ci_src)
-    out = {"id": req["id"], "time": time.strftime("%Y-%m-%d %H:%M:%S"), "test_compile": test, "deployed": False}
+    log(f"compile uji {req['id']} ({target}) ...")
+    test = compile_file(d, ci_src, me)
+    out = {"id": req["id"], "target": target, "time": time.strftime("%Y-%m-%d %H:%M:%S"), "test_compile": test, "deployed": False}
     if not test["ok"]:
         out["result"] = "compile uji GAGAL - tidak dipasang"
         return out
     if not (req.get("deploy") and ALLOW_DEPLOY):
         out["result"] = "compile uji OK (deploy tidak diminta / dimatikan)"
         return out
-    live = d / "MQL5" / "Experts" / EA_FILE
+    live = d / "MQL5" / "Experts" / ea_file
     if live.exists():
-        bk = ci_dir / f"backup_{time.strftime('%Y%m%d_%H%M%S')}_{EA_FILE}"
+        bk = ci_dir / f"backup_{time.strftime('%Y%m%d_%H%M%S')}_{ea_file}"
         shutil.copy2(live, bk)
         out["backup"] = str(bk)
     live.write_bytes(src_bytes)
     log("compile live ...")
-    lc = compile_file(d, live)
+    lc = compile_file(d, live, me)
     out["live_compile"] = lc
     out["deployed"] = lc["ok"]
     if lc["ok"]:
-        # compile lewat command line tidak membuat MT5 memuat ulang EA -> beri tanda; EA (v2.88+) memuat ulang dirinya
+        # compile lewat command line tidak membuat MT5 memuat ulang EA -> beri tanda; EA memuat ulang dirinya
         try:
             (d / "MQL5" / "Files").mkdir(parents=True, exist_ok=True)
-            (d / "MQL5" / "Files" / "9algo_reload.txt").write_text(f"{req['id']} {time.strftime('%Y-%m-%d %H:%M:%S')}", encoding="ascii")
+            (d / "MQL5" / "Files" / flag).write_text(f"{req['id']} {time.strftime('%Y-%m-%d %H:%M:%S')}", encoding="ascii")
         except Exception as e:
             out["reload_flag_error"] = str(e)
-    out["result"] = "DIPASANG - EA di chart reload otomatis" if lc["ok"] else "compile live gagal (cek live_compile)"
-    if lc["ok"] and req.get("restart_terminal"):
+    out["result"] = ("DIPASANG - EA di chart reload otomatis" if lc["ok"] else "compile live gagal (cek live_compile)") + \
+                    ("" if target == "9algo" else f" [{target}]")
+    if lc["ok"] and req.get("restart_terminal") and target == "9algo":
         log("restart MT5 supaya chart memuat versi baru ...")
         out["restart"] = restart_terminal(d)
     return out
