@@ -4,7 +4,7 @@
 //| Tambahan 10algo: panel, tombol, penjaga risiko opsional,         |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.01"
+#property version   "1.02"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel & penjaga risiko"
 
 #include <Trade/Trade.mqh>
@@ -27,6 +27,8 @@ input int    InpPanelX               = 10;        // Posisi panel X
 input int    InpPanelY               = 26;        // Posisi panel Y
 input bool   InpTheme                = true;      // Tema chart gelap ala 9algo
 input bool   InpDrawWindow           = true;      // Garis jendela 10:20 / 10:31 London di chart
+input int    InpLocalUTCOffset       = 7;         // Jam lokal di panel: selisih dari UTC (WIB = 7, WITA = 8, WIT = 9)
+input string InpLocalName            = "WIB";     // Nama jam lokal di panel
 input bool   InpWriteState           = true;      // Tulis status JSON ke Common\Files\9algo (dibaca 9algo_sync)
 
 const int    A10_LAYERS        = 10;
@@ -1019,6 +1021,9 @@ void Preview()
    g_pvOK = (g_pvU > 0);
   }
 
+datetime LondonToLocal(datetime ldnWall) { return UTCFromLondon(ldnWall) + InpLocalUTCOffset * 3600; }
+string HM(datetime t) { MqlDateTime d; TimeToStruct(t, d); return StringFormat("%02d:%02d", d.hour, d.min); }
+
 string NextStartText(datetime ldn)
   {
    MqlDateTime L; TimeToStruct(ldn, L);
@@ -1040,7 +1045,7 @@ string NextStartText(datetime ldn)
    long s = (long)target - (long)ldn;
    MqlDateTime d2; TimeToStruct(target, d2);
    string when = (DayStart(target) == day ? "hari ini" : HariPendek(d2.day_of_week) + " " + IntegerToString(d2.day) + " " + BulanPendek(d2.mon));
-   return StringFormat("%s 10:20 (%dj %02dm lagi)", when, (int)(s / 3600), (int)((s % 3600) / 60));
+   return StringFormat("%s %s %s (%dj %02dm lagi)", when, HM(LondonToLocal(target)), InpLocalName, (int)(s / 3600), (int)((s % 3600) / 60));
   }
 
 void StatusPill(string &txt, color &bg)
@@ -1095,7 +1100,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.01", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.02", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1110,7 +1115,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    if(ldnOK)
      {
       MqlDateTime L; TimeToStruct(ldn, L);
-      Row("c1r1", "Jam London", StringFormat("%s %d %s  %02d:%02d", HariPendek(L.day_of_week), L.day, BulanPendek(L.mon), L.hour, L.min), X, W, r, C_TXT); r += lh;
+      Row("c1r1", "Jam London  |  " + InpLocalName, StringFormat("%s %d %s  %02d:%02d  |  %s", HariPendek(L.day_of_week), L.day, BulanPendek(L.mon), L.hour, L.min, HM(LondonToLocal(ldn))), X, W, r, C_TXT); r += lh;
       Row("c1r2", "Jadwal berikutnya", NextStartText(ldn), X, W, r, C_TXT); r += lh;
      }
    else
@@ -1118,7 +1123,13 @@ void DrawPanel(datetime ldn, bool ldnOK)
       Row("c1r1", "Jam London", "belum dikenali", X, W, r, C_WARN); r += lh;
       Row("c1r2", "Jadwal berikutnya", "-", X, W, r, C_DIM); r += lh;
      }
-   Row("c1r3", "Jendela", "entry 10:20-10:29  |  tutup 10:31", X, W, r, C_DIM); r += lh;
+   if(ldnOK)
+     {
+      datetime d0 = DayStart(ldn);
+      Row("c1r3", "Jendela (" + InpLocalName + ")", StringFormat("entry %s-%s  |  tutup %s  (London 10:20-10:31)", HM(LondonToLocal(d0 + T_MULAI * 60)),
+          HM(LondonToLocal(d0 + (T_MULAI + A10_LAYERS - 1) * 60)), HM(LondonToLocal(d0 + T_TUTUP * 60))), X, W, r, C_DIM); r += lh;
+     }
+   else { Row("c1r3", "Jendela", "entry 10:20-10:29  |  tutup 10:31 London", X, W, r, C_DIM); r += lh; }
    string note = g_fatal ? "TIDAK BISA JALAN: " + g_fatalMsg : g_dayNote;
    if(g_guardNote != "" && !g_fatal) note = note + " (" + g_guardNote + ")";
    string ln[];
@@ -1262,7 +1273,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.01", true);
+   JAdd(s, "version", "1.02", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1562,7 +1573,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.01 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
+      PrintFormat("10algo v1.02 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "", g_lots, InpLots, vstep,
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER));
    ArrayFree(g_rDay); ArrayFree(g_rVal);

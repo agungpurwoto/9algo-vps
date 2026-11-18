@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.01-1",
+  "id": "10algo-1.02-1",
   "target": "10algo",
   "file": "src/10algo.mq5",
   "deploy": true,
-  "note": "pasang 10algo ke terminal Vantage (C:/Program Files/Vantage Markets MT5 Terminal)"
+  "note": "panel 10algo: tampilkan jam WIB"
 }
