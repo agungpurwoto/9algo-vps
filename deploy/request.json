@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.12-2",
-  "target": "10algo",
-  "file": "src/10algo.mq5",
-  "deploy": true,
-  "note": "10algo v1.12: hentikan percobaan unduh riwayat (reload) + dukungan batal"
+  "id": "duka-test-1",
+  "action": "duka",
+  "symbol": "XAUUSD",
+  "from": "2026-11-16",
+  "note": "uji format data Dukascopy (4 hari)"
 }
