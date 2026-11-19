@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.04-2",
+  "id": "10algo-1.05-1",
   "target": "10algo",
   "file": "src/10algo.mq5",
   "deploy": true,
-  "note": "10algo v1.04: hapus penjaga tambahan (mode lot risiko, batas rugi terburuk, batas drawdown) - perilaku trading sama dengan A10 asli"
+  "note": "10algo v1.05: lot per lapis 0.5 (input baru InpLotLapis)"
 }
