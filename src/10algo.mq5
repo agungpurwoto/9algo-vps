@@ -4,7 +4,7 @@
 //| Tambahan 10algo: panel, tombol, statistik, lot risiko, rem lapis, |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.11"
+#property version   "1.12"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel"
 
 #include <Trade/Trade.mqh>
@@ -1108,7 +1108,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.11", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.12", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1274,7 +1274,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.11", true);
+   JAdd(s, "version", "1.12", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1466,16 +1466,29 @@ string SilverSymbol()
    return s;
   }
 
+// Paksa terminal membangun/mengunduh riwayat lama (pola CheckLoadHistory dari dokumentasi MQL5):
+// minta blok bar berikutnya per posisi, bukan per tanggal. Dibatasi ~4 detik per panggilan.
 bool HistReady(string sym, datetime from)
   {
-   MqlRates r[];
+   datetime tf0 = (datetime)SeriesInfoInteger(sym, PERIOD_M1, SERIES_TERMINAL_FIRSTDATE);
+   ENUM_TIMEFRAMES tfs[2] = {PERIOD_M5, PERIOD_M1};
    bool ok = true;
-   ENUM_TIMEFRAMES tfs[2] = {PERIOD_M1, PERIOD_M5};
+   datetime tt[];
    for(int i = 0; i < 2; i++)
      {
-      CopyRates(sym, tfs[i], from, from + 10 * 86400, r);    // memicu unduh riwayat
-      datetime f = (datetime)SeriesInfoInteger(sym, tfs[i], SERIES_FIRSTDATE);
-      if(f == 0 || f > from + 7 * 86400) ok = false;
+      datetime first = (datetime)SeriesInfoInteger(sym, tfs[i], SERIES_FIRSTDATE);
+      if(first > 0 && first <= from + 7 * 86400) continue;
+      if(tf0 > 0) CopyTime(sym, tfs[i], tf0 + PeriodSeconds(tfs[i]), 1, tt);
+      ulong t0 = GetTickCount64();
+      while(GetTickCount64() - t0 < 4000 && !IsStopped())
+        {
+         first = (datetime)SeriesInfoInteger(sym, tfs[i], SERIES_FIRSTDATE);
+         if(first > 0 && first <= from + 7 * 86400) break;
+         int bars = Bars(sym, tfs[i]);
+         if(CopyTime(sym, tfs[i], bars, 5000, tt) <= 0) Sleep(50);
+        }
+      first = (datetime)SeriesInfoInteger(sym, tfs[i], SERIES_FIRSTDATE);
+      if(!(first > 0 && first <= from + 7 * 86400)) ok = false;
      }
    return ok;
   }
@@ -1547,14 +1560,15 @@ void HistExportCheck()
    if(now < g_expNext) return;
    MqlDateTime t; TimeToStruct(now, t);
    if(t.hour >= 11 && t.hour <= 13) { g_expNext = now + 300; return; }
-   string ag = SilverSymbol();
+   string ag = (StringFind(g_expId, "perak") >= 0 ? SilverSymbol() : "");
    datetime srvFirst = (datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_SERVER_FIRSTDATE);
    datetime from = (g_expFrom > srvFirst ? g_expFrom : srvFirst);
    bool ready = HistReady(_Symbol, from) && (ag == "" || HistReady(ag, from));
-   if(!ready && g_expTry < 40)
+   if(!ready && g_expTry < 600)
      {
-      g_expTry++; g_expNext = now + 60;
-      PrintFormat("10algo: menunggu unduhan riwayat (%d/40): M1 %s mulai %s, M5 mulai %s", g_expTry, _Symbol,
+      g_expTry++; g_expNext = now + 3;
+      if(g_expTry % 20 == 1)
+      PrintFormat("10algo: mengunduh riwayat (%d): M1 %s mulai %s, M5 mulai %s", g_expTry, _Symbol,
                   TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_FIRSTDATE), TIME_DATE),
                   TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M5, SERIES_FIRSTDATE), TIME_DATE));
       return;
@@ -1765,7 +1779,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.11 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | rem lapis %s", _Symbol,
+      PrintFormat("10algo v1.12 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | rem lapis %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "",
                   InpRisikoPerU > 0.0 ? StringFormat("dari risiko %.2f%% saldo per 1U (dihitung tiap 10:20 London)", InpRisikoPerU) : StringFormat("%.2f per lapis (tetap)", g_lots),
                   InpLotLapis, vstep,
