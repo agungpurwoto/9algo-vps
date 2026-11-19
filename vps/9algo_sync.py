@@ -32,7 +32,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.10"
+VERSION = "1.11"
 
 
 def log(msg):
@@ -220,6 +220,7 @@ def collect(last_compile):
             states[Path(f).name] = {"error": str(e)}
     st["ea_state"] = states
     st["memory"] = mem_info()
+    st["duka"] = {"running": DUKA["running"], "last": DUKA["last"]}
     try:
         d10 = data_dir_for_install(T10_INSTALL)
         t10 = {"install": T10_INSTALL, "installed": Path(T10_INSTALL).exists(), "data_dir": str(d10) if d10 else None}
@@ -443,8 +444,105 @@ def set_maxbars(target, value):
     return {"ok": True, "result": f"MaxBars {old} -> {value}, terminal dibuka ulang", "old": old, "new": str(value)}
 
 
+# ---------------- v1.11: data M1 Dukascopy (sumber yang sama dengan laporan A10) ----------------
+DUKA = {"running": None, "last": None}
+
+
+def duka_worker(req):
+    import lzma, struct
+    import datetime as _dt
+    sym = req.get("symbol", "XAUUSD")
+    d = _dt.date.fromisoformat(req.get("from", "2010-06-01"))
+    end = _dt.date.today()
+    h1, h2 = int(req.get("m1_utc_from", 8)), int(req.get("m1_utc_to", 17))
+    out = common_files()
+    out.mkdir(parents=True, exist_ok=True)
+    year, f1, f5, b5, n_ok, n_fail = None, None, None, None, 0, 0
+
+    def close_year():
+        nonlocal f1, f5, b5
+        if b5:
+            f5.write("%s,%s,%s,%s,%s\n" % (b5[0].strftime("%Y.%m.%d %H:%M"), b5[1], b5[2], b5[3], b5[4]))
+            b5 = None
+        for f in (f1, f5):
+            if f:
+                f.close()
+        for kind in ("M1", "M5"):
+            tmp = out / f"tmp_duka_{sym}_{kind}_{year}.csv"
+            if tmp.exists():
+                os.replace(tmp, out / f"export_duka_{sym}_{kind}_{year}.csv")
+        f1 = f5 = None
+    try:
+        while d <= end:
+            if d.weekday() == 5:
+                d += _dt.timedelta(days=1)
+                continue
+            if d.year != year:
+                if year is not None:
+                    close_year()
+                year = d.year
+                f1 = open(out / f"tmp_duka_{sym}_M1_{year}.csv", "w", encoding="ascii", newline="")
+                f5 = open(out / f"tmp_duka_{sym}_M5_{year}.csv", "w", encoding="ascii", newline="")
+                f1.write("time_utc,open,high,low,close\n")
+                f5.write("time_utc,open,high,low,close\n")
+            url = f"https://datafeed.dukascopy.com/datafeed/{sym}/{d.year}/{d.month - 1:02d}/{d.day:02d}/BID_candles_min_1.bi5"
+            data = None
+            for k in range(4):
+                try:
+                    rq = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                    with urllib.request.urlopen(rq, timeout=30) as r:
+                        data = r.read()
+                    break
+                except urllib.error.HTTPError as e:
+                    if e.code == 404:
+                        break
+                    time.sleep(2 + 3 * k)
+                except Exception:
+                    time.sleep(2 + 3 * k)
+            if data:
+                try:
+                    raw = lzma.decompress(data)
+                    n_ok += 1
+                except Exception:
+                    raw = b""
+                    n_fail += 1
+                base = _dt.datetime(d.year, d.month, d.day)
+                for i in range(0, len(raw) - 23, 24):
+                    t, o, c, lo, hi, v = struct.unpack(">IIIIIf", raw[i:i + 24])
+                    if v <= 0:
+                        continue
+                    sc = 1000.0 if o > 100000 else 1.0
+                    o, c, lo, hi = o / sc, c / sc, lo / sc, hi / sc
+                    ts = base + _dt.timedelta(seconds=t)
+                    if h1 <= ts.hour < h2:
+                        f1.write("%s,%.3f,%.3f,%.3f,%.3f\n" % (ts.strftime("%Y.%m.%d %H:%M"), o, hi, lo, c))
+                    t5 = ts - _dt.timedelta(minutes=ts.minute % 5)
+                    if b5 and b5[0] == t5:
+                        b5[2] = max(b5[2], hi); b5[3] = min(b5[3], lo); b5[4] = c
+                    else:
+                        if b5:
+                            f5.write("%s,%.3f,%.3f,%.3f,%.3f\n" % (b5[0].strftime("%Y.%m.%d %H:%M"), b5[1], b5[2], b5[3], b5[4]))
+                        b5 = [t5, o, hi, lo, c]
+            else:
+                n_fail += 1
+            DUKA["running"] = {"id": req["id"], "symbol": sym, "day": str(d), "ok_days": n_ok, "fail_days": n_fail}
+            d += _dt.timedelta(days=1)
+            time.sleep(0.05)
+        close_year()
+        DUKA["last"] = {"id": req["id"], "symbol": sym, "done": time.strftime("%Y-%m-%d %H:%M:%S"), "ok_days": n_ok, "fail_days": n_fail}
+    except Exception as e:
+        DUKA["last"] = {"id": req["id"], "error": str(e), "at": str(d)}
+    finally:
+        DUKA["running"] = None
+
+
 def handle_request(req):
     target = req.get("target", "9algo")
+    if req.get("action") == "duka":
+        if DUKA["running"]:
+            return {"id": req["id"], "ok": False, "result": "unduhan Dukascopy lain masih berjalan"}
+        threading.Thread(target=duka_worker, args=(req,), daemon=True).start()
+        return {"id": req["id"], "ok": True, "time": time.strftime("%Y-%m-%d %H:%M:%S"), "result": "unduh data Dukascopy dimulai"}
     if req.get("action") == "export_history":
         d = target_info(target)[0]
         if not d:
@@ -504,6 +602,8 @@ def handle_request(req):
 def self_update(state):
     if TESTER["running"] or tester_proc_alive():
         return                                              # jangan restart di tengah backtest
+    if DUKA["running"]:
+        return                                              # jangan restart di tengah unduhan Dukascopy
     c, js, h = gh("GET", "/contents/vps/9algo_sync.py?ref=main",
                   headers={"If-None-Match": state["etag_self"]} if state.get("etag_self") else {})
     if c != 200:
