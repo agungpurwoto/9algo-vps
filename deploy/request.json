@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.03-1",
+  "id": "10algo-1.04-1",
   "target": "10algo",
   "file": "src/10algo.mq5",
   "deploy": true,
-  "note": "panel 10algo: perbaikan kedip & blank setelah reload, input skala panel"
+  "note": "10algo v1.04: hapus penjaga tambahan (mode lot risiko, batas rugi terburuk, batas drawdown) - perilaku trading sama dengan A10 asli"
 }

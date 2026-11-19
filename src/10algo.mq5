@@ -1,11 +1,11 @@
 //+------------------------------------------------------------------+
 //| 10algo.mq5                                                       |
 //| Algoritma: A10 London Auction v1.23 (Trade By Data) - TIDAK diubah |
-//| Tambahan 10algo: panel, tombol, penjaga risiko opsional,         |
+//| Tambahan 10algo: panel, tombol, statistik (tanpa penjaga),       |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.03"
-#property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel & penjaga risiko"
+#property version   "1.04"
+#property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel"
 
 #include <Trade/Trade.mqh>
 
@@ -13,15 +13,6 @@ input long   InpMagic  = 261114;
 input double InpLots   = 0.01;
 input string InpSymbol = "";
 
-enum ENUM_LOT_MODE { LOT_TETAP = 0,   // Tetap (InpLots, sama seperti A10 asli)
-                     LOT_RISIKO = 1   // Dari risiko: rugi terburuk/hari = InpRiskPerDayPct% saldo
-                   };
-input group "=== 10algo: ukuran lot ==="
-input ENUM_LOT_MODE InpLotMode       = LOT_TETAP; // Mode lot
-input double InpRiskPerDayPct        = 1.5;       // Mode risiko: rugi bila SEMUA lapis kena SL (% saldo)
-input group "=== 10algo: penjaga (tidak mengubah algoritma; hanya melewati hari) ==="
-input double InpMaxWorstDayPct       = 3.0;       // Lewati hari jika rugi terburuk (10 lapis kena SL) > X% saldo (0 = mati)
-input double InpMaxDrawdownPct       = 25.0;      // Berhenti buka hari baru jika ekuitas turun > X% dari puncak (0 = mati)
 input group "=== 10algo: tampilan ==="
 input int    InpPanelX               = 10;        // Posisi panel X
 input int    InpPanelY               = 26;        // Posisi panel Y
@@ -769,7 +760,6 @@ double   g_sc         = 1.0;
 bool     g_mini       = false;
 bool     g_paused     = false;
 datetime g_confirmUntil = 0;
-double   g_peak       = 0.0;
 double   g_stToday = 0, g_stWeek = 0, g_stMonth = 0, g_stAll = 0;
 int      g_stDays = 0, g_stWin = 0;
 double   g_last10[];
@@ -787,7 +777,6 @@ datetime g_vlDay = 0;
 int S(double v) { return (int)MathRound(v * g_sc); }
 
 string PauseKey() { return "10algo_pause_" + IntegerToString(InpMagic) + "_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)); }
-string PeakKey()  { return "10algo_peak_" + IntegerToString(InpMagic) + "_" + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)); }
 
 string Usd(double v, bool sign = false)
   {
@@ -920,40 +909,11 @@ double WorstDayLoss(double u, double lots)
    return A10_LAYERS * (A10_SL_U * u + spr) * lots * ValuePerPrice();
   }
 
-double RiskModeLots(double u)
-  {
-   double per = WorstDayLoss(u, 1.0);
-   if(per <= 0) return 0;
-   double money = AccountInfoDouble(ACCOUNT_BALANCE) * InpRiskPerDayPct / 100.0;
-   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP), vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), vmax = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
-   if(step <= 0) step = (vmin > 0 ? vmin : 0.01);
-   double l = MathFloor(money / per / step + 1e-9) * step;
-   if(vmax > 0 && l > vmax) l = vmax;
-   double vlimit = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_LIMIT);
-   if(vlimit > 0 && l * A10_LAYERS > vlimit) l = MathFloor(vlimit / A10_LAYERS / step + 1e-9) * step;
-   if(vmin > 0 && l < vmin - 1e-9) return 0;
-   return NormalizeDouble(l, 8);
-  }
-
-// penjaga di luar algoritma: dipanggil di Prepare() setelah keputusan A10. Return "" = boleh.
+// 10algo v1.04: tanpa penjaga tambahan - perilaku trading sama persis dengan A10 asli.
+// Satu-satunya pengecualian: tombol PAUSE manual di panel.
 string GuardWhy(double u)
   {
    if(g_paused) return "PAUSE dari panel";
-   double eq = AccountInfoDouble(ACCOUNT_EQUITY), bal = AccountInfoDouble(ACCOUNT_BALANCE);
-   if(InpMaxDrawdownPct > 0 && g_peak > 0 && eq < g_peak * (1.0 - InpMaxDrawdownPct / 100.0))
-      return StringFormat("drawdown %.1f%% dari puncak %s melewati batas %.1f%% (reset di panel)", 100.0 * (1.0 - eq / g_peak), Usd(g_peak), InpMaxDrawdownPct);
-   if(InpLotMode == LOT_RISIKO)
-     {
-      double l = RiskModeLots(u);
-      if(l <= 0) return StringFormat("lot dari risiko %.2f%% di bawah lot minimum broker (saldo terlalu kecil)", InpRiskPerDayPct);
-      g_lots = l;
-     }
-   if(InpMaxWorstDayPct > 0 && bal > 0)
-     {
-      double w = WorstDayLoss(u, g_lots);
-      if(w > bal * InpMaxWorstDayPct / 100.0)
-         return StringFormat("rugi terburuk %s = %.2f%% saldo > batas %.2f%%", Usd(w), 100.0 * w / bal, InpMaxWorstDayPct);
-     }
    return "";
   }
 
@@ -1107,7 +1067,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.03", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.04", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1197,24 +1157,14 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PText("c3_t", "RISIKO", X + pad, cy + S(8), 7, C_GOLD, true);
    r = cy + S(26);
    double bal = AccountInfoDouble(ACCOUNT_BALANCE), eq = AccountInfoDouble(ACCOUNT_EQUITY);
-   double lotsShow = (InpLotMode == LOT_RISIKO && uu > 0 && !g_prepared) ? RiskModeLots(uu) : g_lots;
-   Row("c3r1", "Lot per lapis", StringFormat("%.2f x %d lapis  (%s)", lotsShow, A10_LAYERS, InpLotMode == LOT_RISIKO ? StringFormat("risiko %.2f%%", InpRiskPerDayPct) : "tetap"), X, W, r, C_TXT); r += lh;
+   Row("c3r1", "Lot per lapis", StringFormat("%.2f x %d lapis  (tetap, sama seperti A10 asli)", g_lots, A10_LAYERS), X, W, r, C_TXT); r += lh;
    if(uu > 0 && bal > 0)
      {
-      double w = WorstDayLoss(uu, lotsShow);
-      double f = InpMaxWorstDayPct > 0 ? (100.0 * w / bal) / InpMaxWorstDayPct : 0;
-      Row("c3r2", "Rugi terburuk / hari", StringFormat("%s  (%.2f%% saldo)", Usd(w), 100.0 * w / bal), X, W, r, FracColor(f),
-          StringFormat("semua %d lapis kena SL. Batas %.2f%% saldo", A10_LAYERS, InpMaxWorstDayPct)); r += lh;
-      PBar("c3b1", X + pad, r + S(2), W - 2 * pad, S(5), f, FracColor(f));
-      r += S(14);
+      double w = WorstDayLoss(uu, g_lots);
+      Row("c3r2", "Rugi terburuk / hari", StringFormat("%s  (%.2f%% saldo)", Usd(w), 100.0 * w / bal), X, W, r, C_TXT,
+          StringFormat("info saja: semua %d lapis kena SL", A10_LAYERS)); r += lh;
      }
-   double ddp = (g_peak > 0 ? 100.0 * (1.0 - eq / g_peak) : 0);
-   if(ddp < 0) ddp = 0;
-   double fd = InpMaxDrawdownPct > 0 ? ddp / InpMaxDrawdownPct : 0;
-   Row("c3r3", "Drawdown dari puncak", StringFormat("%.2f%%  |  batas %s", ddp, InpMaxDrawdownPct > 0 ? DoubleToString(InpMaxDrawdownPct, 1) + "%" : "mati"), X, W, r, FracColor(fd),
-       "puncak ekuitas " + Usd(g_peak)); r += lh;
-   PBar("c3b2", X + pad, r + S(2), W - 2 * pad, S(5), fd, FracColor(fd));
-   r += S(16);
+   r += S(6);
    PRect("c3", X, cy, W, r - cy, C_CARD, C_EDGE);
    y = r + S(6);
 
@@ -1262,7 +1212,6 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PButton("btn_close", conf ? "KLIK LAGI UTK YAKIN" : "TUTUP SEMUA", X + bw + S(8), y, bw, S(26), conf ? C_BAD : C'90,40,46', clrWhite,
            "Tutup semua posisi 10algo di simbol ini (klik 2x dalam 5 detik)");
    y += S(32);
-   PButton("btn_peak", "RESET PUNCAK DD", X, y, W, S(20), C_CARD, C_DIM, "Jadikan ekuitas sekarang sebagai puncak baru (membuka blokir drawdown)");
    ChartRedraw();
   }
 
@@ -1296,7 +1245,6 @@ void WriteState()
    JAdd(s, "active", g_active ? "true" : "false", false);
    JAdd(s, "layers", IntegerToString(g_layers), false);
    JAdd(s, "lots", DoubleToString(g_lots, 2), false);
-   JAdd(s, "lot_mode", InpLotMode == LOT_RISIKO ? "risiko" : "tetap", true);
    JAdd(s, "switch", DoubleToString(g_prepared ? g_switch : g_pvSwitch, 4), false);
    JAdd(s, "switch_n", IntegerToString(g_prepared ? g_switchN : g_pvN), false);
    JAdd(s, "u", DoubleToString(g_prepared ? g_u : g_pvU, 4), false);
@@ -1306,7 +1254,6 @@ void WriteState()
    JAdd(s, "floating", DoubleToString(FloatingPL(), 2), false);
    JAdd(s, "balance", DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2), false);
    JAdd(s, "equity", DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2), false);
-   JAdd(s, "peak", DoubleToString(g_peak, 2), false);
    JAdd(s, "pl_today", DoubleToString(g_stToday, 2), false);
    JAdd(s, "pl_week", DoubleToString(g_stWeek, 2), false);
    JAdd(s, "pl_month", DoubleToString(g_stMonth, 2), false);
@@ -1335,14 +1282,6 @@ void ApplyTheme()
    ChartSetInteger(0, CHART_SHIFT, true);
   }
 
-void UpdatePeak()
-  {
-   double eq = AccountInfoDouble(ACCOUNT_EQUITY);
-   if(eq > g_peak + 0.005)
-     {
-      g_peak = eq;
-      if(MQLInfoInteger(MQL_TESTER) == 0) GlobalVariableSet(PeakKey(), g_peak);
-     }
   }
 
 // 10algo v1.01: dipasang ulang dari VPS (9algo_sync menulis MQL5\Files\10algo_reload.txt) -> EA memuat ulang dirinya
@@ -1385,7 +1324,6 @@ void CheckReloadFlag()
 
 void Housekeeping()
   {
-   UpdatePeak();
    if(g_statsDirty || TimeCurrent() - g_statsAt >= 30) ComputeStats();
    if(!g_prepared && !g_fatal && (ArraySize(g_wkStart) > 0 || g_clockOK)) Preview();
    if(TimeCurrent() - g_stateAt >= 30) { g_stateAt = TimeCurrent(); WriteState(); }
@@ -1419,12 +1357,6 @@ void OnChartEvent(const int id, const long &lparam, const double &dparam, const 
       ObjectsDeleteAll(0, g_pfx, 0, OBJ_RECTANGLE_LABEL);
       ObjectsDeleteAll(0, g_pfx, 0, OBJ_BUTTON);
      }
-   else if(b == "btn_peak")
-     {
-      g_peak = AccountInfoDouble(ACCOUNT_EQUITY);
-      GlobalVariableSet(PeakKey(), g_peak);
-      Print("10algo: puncak drawdown di-reset ke ", Usd(g_peak));
-     }
    ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
    datetime ldn = 0;
    bool ok = ServerToLondon(TimeCurrent(), ldn);
@@ -1448,7 +1380,7 @@ void Prepare(datetime nowServer, datetime londonDay)
       g_fatalMsg = StringFormat("simbol %s bukan emas per ons (mata uang dasar %s, harga %.2f); pasang di chart XAUUSD", _Symbol, SymbolInfoString(_Symbol, SYMBOL_CURRENCY_BASE), SymbolInfoDouble(_Symbol, SYMBOL_BID));
       Print("10algo TIDAK BISA JALAN: ", g_fatalMsg);
      }
-   if((InpLotMode == LOT_TETAP && InpLots <= 0.0) || g_fatal)
+   if(InpLots <= 0.0 || g_fatal)
      {
       g_dayNote = "tidak trade (" + g_fatalMsg + ")";
       return;
@@ -1499,11 +1431,11 @@ void Prepare(datetime nowServer, datetime londonDay)
    g_guardNote = "";
    if(g_active)
      {
-      string gw = GuardWhy(u);                         // 10algo: penjaga di luar algoritma
+      string gw = GuardWhy(u);                         // 10algo: hanya PAUSE manual
       if(gw != "")
         {
          g_active = false;
-         g_dayNote = "tidak trade (penjaga 10algo): " + gw;
+         g_dayNote = "tidak trade: " + gw;
          g_guardNote = gw;
          Print("10algo: hari ini dilewati - ", gw);
         }
@@ -1524,12 +1456,7 @@ int OnInit()
    if(vstep <= 0.0)
       vstep = (vmin > 0.0 ? vmin : 0.01);
    g_lots = NormalizeDouble(MathRound(InpLots / vstep) * vstep, 8);
-   if(InpLotMode == LOT_RISIKO)
-     {
-      g_lots = (vmin > 0.0 ? vmin : vstep);              // sementara; dihitung ulang dari risiko tiap hari (Prepare)
-      if(InpRiskPerDayPct <= 0.0) { g_fatal = true; g_fatalMsg = "InpRiskPerDayPct harus > 0 pada mode lot risiko"; }
-     }
-   else if(InpLots <= 0.0 || g_lots <= 0.0)
+   if(InpLots <= 0.0 || g_lots <= 0.0)
      {
       g_fatal = true; g_fatalMsg = "lot harus lebih besar dari nol";
      }
@@ -1582,7 +1509,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.03 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
+      PrintFormat("10algo v1.04 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "", g_lots, InpLots, vstep,
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER));
    ArrayFree(g_rDay); ArrayFree(g_rVal);
@@ -1591,8 +1518,6 @@ int OnInit()
    ObjectsDeleteAll(0, g_pfx);                          // sisa panel lama / dari template -> gambar ulang dengan urutan benar
    g_sc = (InpPanelScale > 0.0 ? InpPanelScale : MathMax(1.0, TerminalInfoInteger(TERMINAL_SCREEN_DPI) / 96.0));
    g_paused = (MQLInfoInteger(MQL_TESTER) == 0 && GlobalVariableCheck(PauseKey()) && GlobalVariableGet(PauseKey()) > 0.5);
-   g_peak = (MQLInfoInteger(MQL_TESTER) == 0 && GlobalVariableCheck(PeakKey())) ? GlobalVariableGet(PeakKey()) : 0.0;
-   UpdatePeak();
    ApplyTheme();
    Comment("");
    g_statsDirty = true; g_pvAt = 0; g_vlDay = 0;
