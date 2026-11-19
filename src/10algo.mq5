@@ -1630,7 +1630,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.09 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
+      PrintFormat("10algo v1.09 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | rem lapis %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "", g_lots, InpLotLapis, vstep,
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER));
    ArrayFree(g_rDay); ArrayFree(g_rVal);
