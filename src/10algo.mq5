@@ -1550,7 +1550,8 @@ void HistExportCheck()
    if(g_expSeen == "#") { g_expSeen = v; return; }
    if(v != "" && v != g_expSeen)
      {
-      g_expSeen = v; g_expId = v; g_expTry = 0; g_expNext = 0;
+      g_expSeen = v; g_expId = (StringFind(v, "batal") >= 0 ? "" : v); g_expTry = 0; g_expNext = 0;
+      if(g_expId == "") { Print("10algo: ekspor riwayat dibatalkan"); return; }
       string p[]; g_expFrom = D'2022.05.01';
       if(StringSplit(v, ' ', p) >= 2) { datetime f = StringToTime(p[1]); if(f > 0) g_expFrom = f; }
       PrintFormat("10algo: permintaan ekspor riwayat %s diterima (sejak %s)", v, TimeToString(g_expFrom, TIME_DATE));
