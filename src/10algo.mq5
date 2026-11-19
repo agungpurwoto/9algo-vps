@@ -4,13 +4,13 @@
 //| Tambahan 10algo: panel, tombol, statistik (tanpa penjaga),       |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.07"
+#property version   "1.08"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel"
 
 #include <Trade/Trade.mqh>
 
 input long   InpMagic  = 261114;
-input double InpLotLapis = 0.5;   // Lot per lapis (v1.07: nama input baru supaya nilai lama di template chart tidak terbawa)
+input double InpLotLapis = 0.5;   // Lot per lapis (v1.08: nama input baru supaya nilai lama di template chart tidak terbawa)
 input string InpSymbol = "";
 
 input group "=== 10algo: tampilan ==="
@@ -909,7 +909,7 @@ double WorstDayLoss(double u, double lots)
    return A10_LAYERS * (A10_SL_U * u + spr) * lots * ValuePerPrice();
   }
 
-// 10algo v1.07: tanpa penjaga tambahan - perilaku trading sama persis dengan A10 asli.
+// 10algo v1.08: tanpa penjaga tambahan - perilaku trading sama persis dengan A10 asli.
 // Satu-satunya pengecualian: tombol PAUSE manual di panel.
 string GuardWhy(double u)
   {
@@ -1067,7 +1067,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.07", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.08", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1229,7 +1229,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.07", true);
+   JAdd(s, "version", "1.08", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1268,7 +1268,7 @@ void WriteState()
    JAdd(s, "pl_total", DoubleToString(g_stAll, 2), false);
    JAdd(s, "days", IntegerToString(g_stDays), false);
    JAdd(s, "win_days", IntegerToString(g_stWin), false);
-   // v1.07: deal 10algo 3 hari terakhir (untuk analisis dari luar)
+   // v1.08: deal 10algo 3 hari terakhir (untuk analisis dari luar)
    string dl = "[";
    datetime nw = TimeCurrent();
    if(HistorySelect(nw - 3 * 86400, nw + 60))
@@ -1348,8 +1348,47 @@ void CheckReloadFlag()
      }
   }
 
+// v1.08: ekspor riwayat harga untuk analisis dari luar (tidak memengaruhi trading).
+// M1 jam server 11:00-14:59 (jendela 10:20-10:31 London jatuh di sini) + semua M5 (untuk U), maks 400 hari.
+datetime g_exportDay = 0;
+void ExportHistory()
+  {
+   if(MQLInfoInteger(MQL_TESTER) != 0) return;
+   datetime now = TimeCurrent();
+   datetime day = now - (now % 86400);
+   if(g_exportDay == day) return;
+   MqlDateTime t; TimeToStruct(now, t);
+   if(t.hour >= 11 && t.hour <= 14) return;          // jangan di sekitar jendela trading
+   g_exportDay = day;
+   MqlRates r[];
+   int n = CopyRates(_Symbol, PERIOD_M1, now - 400 * 86400, now, r);
+   int h = FileOpen("9algo\\export_10algo_m1.csv", FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ);
+   if(h != INVALID_HANDLE)
+     {
+      FileWriteString(h, "time,open,high,low,close,spread\r\n");
+      for(int i = 0; i < n; i++)
+        {
+         MqlDateTime q; TimeToStruct(r[i].time, q);
+         if(q.hour < 11 || q.hour > 14) continue;
+         FileWriteString(h, StringFormat("%s,%.2f,%.2f,%.2f,%.2f,%d\r\n", TimeToString(r[i].time, TIME_DATE | TIME_MINUTES), r[i].open, r[i].high, r[i].low, r[i].close, r[i].spread));
+        }
+      FileClose(h);
+     }
+   int m = CopyRates(_Symbol, PERIOD_M5, now - 400 * 86400, now, r);
+   h = FileOpen("9algo\\export_10algo_m5.csv", FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ);
+   if(h != INVALID_HANDLE)
+     {
+      FileWriteString(h, "time,high,low,close\r\n");
+      for(int i = 0; i < m; i++)
+         FileWriteString(h, StringFormat("%s,%.2f,%.2f,%.2f\r\n", TimeToString(r[i].time, TIME_DATE | TIME_MINUTES), r[i].high, r[i].low, r[i].close));
+      FileClose(h);
+     }
+   PrintFormat("10algo: ekspor riwayat M1 (%d bar diambil) & M5 (%d bar) untuk analisis", n, m);
+  }
+
 void Housekeeping()
   {
+   ExportHistory();
    if(g_statsDirty || TimeCurrent() - g_statsAt >= 30) ComputeStats();
    if(!g_prepared && !g_fatal && (ArraySize(g_wkStart) > 0 || g_clockOK)) Preview();
    if(TimeCurrent() - g_stateAt >= 30) { g_stateAt = TimeCurrent(); WriteState(); }
@@ -1535,7 +1574,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.07 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
+      PrintFormat("10algo v1.08 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "", g_lots, InpLotLapis, vstep,
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER));
    ArrayFree(g_rDay); ArrayFree(g_rVal);

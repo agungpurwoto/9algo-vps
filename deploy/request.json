@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.07-1",
+  "id": "10algo-1.08-1",
   "target": "10algo",
   "file": "src/10algo.mq5",
   "deploy": true,
-  "note": "10algo v1.07: status JSON tambah daftar deal 3 hari (tanpa ubah trading)"
+  "note": "10algo v1.08: ekspor riwayat M1/M5 untuk analisis (tanpa ubah trading)"
 }
