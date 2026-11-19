@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.12-1",
+  "id": "hist-export-2",
   "target": "10algo",
-  "file": "src/10algo.mq5",
-  "deploy": true,
-  "note": "10algo v1.12: unduh riwayat lama per blok bar (pola CheckLoadHistory) - tanpa ubah trading"
+  "action": "export_history",
+  "from": "2022.05.01",
+  "note": "ekspor riwayat M1 emas (jam lelang pagi & sore) sejak Mei 2022"
 }
