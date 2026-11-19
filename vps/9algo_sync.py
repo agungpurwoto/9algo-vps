@@ -21,7 +21,7 @@ Tidak bisa mengirim order / mengubah setelan akun. Aksi hanya: compile + pasang 
 Konfigurasi: sync_config.json (dibuat setup_sync.bat): {"owner":..,"repo":..,"token":..,"interval":90,"allow_deploy":true}
 Python 3.8+ standar, tanpa library tambahan.
 """
-import base64, glob, hashlib, json, os, re, shutil, subprocess, sys, tempfile, threading, time, traceback, urllib.error, urllib.request
+import base64, glob, gzip, hashlib, json, os, re, shutil, subprocess, sys, tempfile, threading, time, traceback, urllib.error, urllib.request
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -32,7 +32,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.9"
+VERSION = "1.10"
 
 
 def log(msg):
@@ -45,7 +45,7 @@ def log(msg):
         pass
 
 
-def gh(method, path, body=None, headers=None, raw_url=None):
+def gh(method, path, body=None, headers=None, raw_url=None, timeout=30):
     url = raw_url or (API + path)
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
@@ -58,7 +58,7 @@ def gh(method, path, body=None, headers=None, raw_url=None):
     for k, v in (headers or {}).items():
         req.add_header(k, v)
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             txt = r.read().decode("utf-8", errors="replace")
             return r.status, (json.loads(txt) if txt.strip() else {}), dict(r.headers)
     except urllib.error.HTTPError as e:
@@ -249,7 +249,7 @@ def push_status(st: dict):
     if TESTER["results"]:
         files.append({"path": "tester_results.json", "mode": "100644", "type": "blob",
                       "content": json.dumps(TESTER["results"], ensure_ascii=False)})
-    c, tree, _ = gh("POST", "/git/trees", {"tree": files})
+    c, tree, _ = gh("POST", "/git/trees", {"tree": files}, timeout=120)
     if c != 201:
         raise RuntimeError(f"tree {c} {tree}")
     c, com, _ = gh("POST", "/git/commits", {"message": "status " + st["utc"], "tree": tree["sha"], "parents": []})
@@ -263,21 +263,37 @@ def push_status(st: dict):
 
 
 def push_export(state):
-    """Branch `export` = ekspor EA (v2.90+): bar M5 per simbol + riwayat trade dengan MFE/MAE.
-    Satu commit tanpa parent, ditimpa; dikirim hanya kalau file berubah, paling sering tiap 20 menit."""
+    """Branch `export` = ekspor EA: bar per simbol + riwayat trade (9algo) + riwayat harga 10algo.
+    Satu commit tanpa parent, ditimpa; dikirim hanya kalau file berubah, paling sering tiap 20 menit.
+    v1.10: file > 1 MB dikirim sebagai .gz lewat blob API; blob yang tidak berubah tidak diunggah ulang."""
     fs = sorted(glob.glob(str(common_files() / "export_*.csv")))
     if not fs:
         return
     sig = ";".join(f"{Path(f).name}:{int(os.path.getmtime(f))}" for f in fs)
     if sig == state.get("export_sig") or time.time() - state.get("export_t", 0) < 1200:
         return
+    cache = state.setdefault("blob_cache", {})
     files = [{"path": "README.md", "mode": "100644", "type": "blob",
-              "content": "Ekspor 9algo (bar M5 + trade MFE/MAE), ditimpa otomatis oleh 9algo_sync.py. Jangan diedit.\n"}]
+              "content": "Ekspor 9algo/10algo, ditimpa otomatis oleh 9algo_sync.py. Jangan diedit.\n"}]
     for f in fs:
-        if os.path.getsize(f) > 8 * 1024 * 1024:
+        size = os.path.getsize(f)
+        name = Path(f).name
+        if size <= 1024 * 1024:
+            files.append({"path": name, "mode": "100644", "type": "blob", "content": read_any(Path(f))})
             continue
-        files.append({"path": Path(f).name, "mode": "100644", "type": "blob", "content": read_any(Path(f))})
-    c, tree, _ = gh("POST", "/git/trees", {"tree": files})
+        if size > 120 * 1024 * 1024:
+            continue
+        key = f"{name}:{int(os.path.getmtime(f))}:{size}"
+        sha = (cache.get(name) or {}).get("key") == key and cache[name].get("sha")
+        if not sha:
+            gz = gzip.compress(Path(f).read_bytes(), compresslevel=9, mtime=0)
+            c, b, _ = gh("POST", "/git/blobs", {"content": base64.b64encode(gz).decode("ascii"), "encoding": "base64"}, timeout=300)
+            if c != 201:
+                raise RuntimeError(f"blob {name} {c} {str(b)[:200]}")
+            sha = b["sha"]
+            cache[name] = {"key": key, "sha": sha}
+        files.append({"path": name + ".gz", "mode": "100644", "type": "blob", "sha": sha})
+    c, tree, _ = gh("POST", "/git/trees", {"tree": files}, timeout=120)
     if c != 201:
         raise RuntimeError(f"export tree {c} {str(tree)[:200]}")
     c, com, _ = gh("POST", "/git/commits", {"message": "export " + time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()), "tree": tree["sha"], "parents": []})
@@ -292,6 +308,7 @@ def push_export(state):
     state["export_t"] = time.time()
     save_state(state)
     log(f"ekspor terkirim ({len(files) - 1} file)")
+
 
 
 def load_state():
@@ -428,6 +445,14 @@ def set_maxbars(target, value):
 
 def handle_request(req):
     target = req.get("target", "9algo")
+    if req.get("action") == "export_history":
+        d = target_info(target)[0]
+        if not d:
+            return {"id": req["id"], "ok": False, "target": target, "result": "folder data terminal tidak ditemukan"}
+        (d / "MQL5" / "Files").mkdir(parents=True, exist_ok=True)
+        (d / "MQL5" / "Files" / "10algo_export_req.txt").write_text(f"{req['id']} {req.get('from', '2022.05.01')}", encoding="ascii")
+        return {"id": req["id"], "ok": True, "target": target, "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "result": "permintaan ekspor riwayat ditulis untuk EA"}
     if req.get("action") == "maxbars":
         r = set_maxbars(target, int(req.get("value", 5000000)))
         r.update({"id": req["id"], "target": target, "time": time.strftime("%Y-%m-%d %H:%M:%S")})

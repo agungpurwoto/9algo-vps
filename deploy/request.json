@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.10-1",
+  "id": "10algo-1.11-1",
   "target": "10algo",
   "file": "src/10algo.mq5",
   "deploy": true,
-  "note": "10algo v1.10: status JSON tambah diagnosa riwayat (maxbars, tanggal awal riwayat server/terminal) - tanpa ubah trading"
+  "note": "10algo v1.11: ekspor riwayat panjang atas permintaan (tanpa ubah trading)"
 }

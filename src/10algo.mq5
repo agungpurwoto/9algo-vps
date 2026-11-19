@@ -4,7 +4,7 @@
 //| Tambahan 10algo: panel, tombol, statistik, lot risiko, rem lapis, |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.10"
+#property version   "1.11"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel"
 
 #include <Trade/Trade.mqh>
@@ -1108,7 +1108,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.10", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.11", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1274,7 +1274,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.10", true);
+   JAdd(s, "version", "1.11", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1440,8 +1440,138 @@ void ExportHistory()
    PrintFormat("10algo: ekspor riwayat M1 (%d bar diambil) & M5 (%d bar) untuk analisis", n, m);
   }
 
+// v1.11: ekspor riwayat panjang atas permintaan (9algo_sync menulis MQL5\Files\10algo_export_req.txt).
+// Tidak memengaruhi trading; tidak jalan pada jam server 11-13 (sekitar jendela 10:20-10:31 London).
+string   g_expSeen = "#";
+string   g_expId   = "";
+datetime g_expFrom = 0;
+datetime g_expNext = 0;
+int      g_expTry  = 0;
+
+string ReadTxtFlag(string fn, string fallback)
+  {
+   if(!FileIsExist(fn)) return "";
+   int h = FileOpen(fn, FILE_READ | FILE_TXT | FILE_ANSI | FILE_SHARE_READ | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE) return fallback;
+   string v = FileReadString(h);
+   FileClose(h);
+   return v;
+  }
+
+string SilverSymbol()
+  {
+   string s = _Symbol;
+   if(StringReplace(s, "XAU", "XAG") <= 0) return "";
+   if(!SymbolSelect(s, true)) return "";
+   return s;
+  }
+
+bool HistReady(string sym, datetime from)
+  {
+   MqlRates r[];
+   bool ok = true;
+   ENUM_TIMEFRAMES tfs[2] = {PERIOD_M1, PERIOD_M5};
+   for(int i = 0; i < 2; i++)
+     {
+      CopyRates(sym, tfs[i], from, from + 10 * 86400, r);    // memicu unduh riwayat
+      datetime f = (datetime)SeriesInfoInteger(sym, tfs[i], SERIES_FIRSTDATE);
+      if(f == 0 || f > from + 7 * 86400) ok = false;
+     }
+   return ok;
+  }
+
+void HistWrite(string sym, datetime from, int &hours[])
+  {
+   MqlRates m5[];
+   ArraySetAsSeries(m5, false);
+   int n5 = CopyRates(sym, PERIOD_M5, from - 20 * 86400, TimeCurrent(), m5);
+   if(n5 < 2000) { PrintFormat("10algo: ekspor %s gagal - M5 hanya %d bar", sym, n5); return; }
+   double P[]; ArrayResize(P, n5 + 1); P[0] = 0.0; P[1] = 0.0;
+   for(int i = 1; i < n5; i++)
+     {
+      double pc = m5[i - 1].close;
+      P[i + 1] = P[i] + MathMax(m5[i].high, pc) - MathMin(m5[i].low, pc);
+     }
+   int dg = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   string nm = sym; int dot = StringFind(nm, "."); if(dot > 0) nm = StringSubstr(nm, 0, dot);
+   MqlDateTime a; TimeToStruct(from, a);
+   MqlDateTime b; TimeToStruct(TimeCurrent(), b);
+   int total = 0;
+   for(int y = a.year; y <= b.year; y++)
+     {
+      MqlDateTime q; ZeroMemory(q); q.year = y; q.mon = 1; q.day = 1;
+      datetime y0 = StructToTime(q); q.year = y + 1; datetime y1 = StructToTime(q) - 1;
+      if(y0 < from) y0 = from;
+      MqlRates r[];
+      ArraySetAsSeries(r, false);
+      int n = CopyRates(sym, PERIOD_M1, y0, y1, r);
+      if(n <= 0) continue;
+      int h = FileOpen("9algo\\export_hist_" + nm + "_" + IntegerToString(y) + ".csv", FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON | FILE_SHARE_READ);
+      if(h == INVALID_HANDLE) continue;
+      FileWriteString(h, "time,open,high,low,close,spread,u\r\n");
+      int j = 0, cnt = 0;
+      for(int i = 0; i < n; i++)
+        {
+         MqlDateTime t; TimeToStruct(r[i].time, t);
+         bool want = false;
+         for(int k = 0; k < ArraySize(hours); k++) if(t.hour == hours[k]) { want = true; break; }
+         if(!want) continue;
+         datetime aa = r[i].time - 60; datetime blok = aa - (aa % 300); datetime last = blok - 600;
+         while(j + 1 < n5 && m5[j + 1].time <= last) j++;
+         while(j > 0 && m5[j].time > last) j--;
+         double u = (j - 1379 >= 1 && m5[j].time <= last) ? (P[j + 1] - P[j - 1379]) / 1380.0 : 0.0;
+         FileWriteString(h, TimeToString(r[i].time, TIME_DATE | TIME_MINUTES) + "," + DoubleToString(r[i].open, dg) + "," + DoubleToString(r[i].high, dg) + "," +
+                         DoubleToString(r[i].low, dg) + "," + DoubleToString(r[i].close, dg) + "," + IntegerToString(r[i].spread) + "," + DoubleToString(u, 4) + "\r\n");
+         cnt++;
+        }
+      FileClose(h);
+      total += cnt;
+     }
+   PrintFormat("10algo: ekspor riwayat %s selesai: %d bar M1 (jam server terpilih), M5 %d bar, sejak %s", sym, total, n5, TimeToString(from, TIME_DATE));
+  }
+
+void HistExportCheck()
+  {
+   if(MQLInfoInteger(MQL_TESTER) != 0) return;
+   string v = ReadTxtFlag("10algo_export_req.txt", g_expSeen);
+   if(g_expSeen == "#") { g_expSeen = v; return; }
+   if(v != "" && v != g_expSeen)
+     {
+      g_expSeen = v; g_expId = v; g_expTry = 0; g_expNext = 0;
+      string p[]; g_expFrom = D'2022.05.01';
+      if(StringSplit(v, ' ', p) >= 2) { datetime f = StringToTime(p[1]); if(f > 0) g_expFrom = f; }
+      PrintFormat("10algo: permintaan ekspor riwayat %s diterima (sejak %s)", v, TimeToString(g_expFrom, TIME_DATE));
+     }
+   if(g_expId == "") return;
+   datetime now = TimeCurrent();
+   if(now < g_expNext) return;
+   MqlDateTime t; TimeToStruct(now, t);
+   if(t.hour >= 11 && t.hour <= 13) { g_expNext = now + 300; return; }
+   string ag = SilverSymbol();
+   datetime srvFirst = (datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_SERVER_FIRSTDATE);
+   datetime from = (g_expFrom > srvFirst ? g_expFrom : srvFirst);
+   bool ready = HistReady(_Symbol, from) && (ag == "" || HistReady(ag, from));
+   if(!ready && g_expTry < 40)
+     {
+      g_expTry++; g_expNext = now + 60;
+      PrintFormat("10algo: menunggu unduhan riwayat (%d/40): M1 %s mulai %s, M5 mulai %s", g_expTry, _Symbol,
+                  TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_FIRSTDATE), TIME_DATE),
+                  TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M5, SERIES_FIRSTDATE), TIME_DATE));
+      return;
+     }
+   int hg[6] = {11, 12, 13, 16, 17, 18};
+   HistWrite(_Symbol, from, hg);
+   if(ag != "")
+     {
+      int hs[3] = {13, 14, 15};
+      HistWrite(ag, from, hs);
+     }
+   g_expId = "";
+  }
+
 void Housekeeping()
   {
+   HistExportCheck();
    ExportHistory();
    if(g_statsDirty || TimeCurrent() - g_statsAt >= 30) ComputeStats();
    if(!g_prepared && !g_fatal && (ArraySize(g_wkStart) > 0 || g_clockOK)) Preview();
@@ -1635,7 +1765,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.10 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | rem lapis %s", _Symbol,
+      PrintFormat("10algo v1.11 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | rem lapis %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "",
                   InpRisikoPerU > 0.0 ? StringFormat("dari risiko %.2f%% saldo per 1U (dihitung tiap 10:20 London)", InpRisikoPerU) : StringFormat("%.2f per lapis (tetap)", g_lots),
                   InpLotLapis, vstep,
