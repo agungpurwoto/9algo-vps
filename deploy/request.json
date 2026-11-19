@@ -1,7 +1,7 @@
 {
-  "id": "duka-test-1",
+  "id": "duka-xau-2010",
   "action": "duka",
   "symbol": "XAUUSD",
-  "from": "2026-11-16",
-  "note": "uji format data Dukascopy (4 hari)"
+  "from": "2010-06-01",
+  "note": "data M1 emas Dukascopy 2010-2026 untuk uji 10algo jangka panjang"
 }
