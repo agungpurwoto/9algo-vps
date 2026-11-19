@@ -1,7 +1,7 @@
 {
-  "id": "duka-xau-2010",
-  "action": "duka",
-  "symbol": "XAUUSD",
-  "from": "2010-06-01",
-  "note": "data M1 emas Dukascopy 2010-2026 untuk uji 10algo jangka panjang"
+  "id": "10algo-1.13-1",
+  "target": "10algo",
+  "file": "src/10algo.mq5",
+  "deploy": true,
+  "note": "10algo v1.13: risiko 2%/U, pengaman A (lonjakan 3U), B (SL 1,5U), C (rezim 40 hari bayangan), rem dihapus"
 }

@@ -4,18 +4,20 @@
 //| Tambahan 10algo: panel, tombol, statistik, lot risiko, rem lapis, |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.12"
+#property version   "1.13"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel"
 
 #include <Trade/Trade.mqh>
 
 input long   InpMagic  = 261114;
-input double InpLotLapis = 0.5;   // Lot per lapis TETAP (dipakai hanya jika InpRisikoPerU = 0)
+input double InpLotLapis = 0.5;   // Lot per lapis TETAP (dipakai hanya jika InpRisiko = 0)
 input string InpSymbol = "";
 
-input group "=== 10algo: ukuran lot & rem (v1.09) ==="
-input double InpRisikoPerU = 4.38;  // Lot dari saldo & U: 1U per lapis = X% saldo (4.38 = lot 1,0 di saldo 10.753 USC, U $4,71). 0 = pakai InpLotLapis
-input int    InpRemLapis   = 5;     // Rem: kalau sampai lapis ke-N terbuka belum ada TP, lapis berikutnya dilewati (5 = rem 10:25 London). 0 = mati
+input group "=== 10algo: lot & pengaman (v1.13) ==="
+input double InpRisiko     = 2.0;   // Lot dari saldo & U: 1U per lapis = X% saldo (compounding + ikut U). 0 = pakai InpLotLapis
+input double InpLonjakanU  = 3.0;   // Pengaman A: lewati hari jika harga 10:20 London >= harga 09:00 + X U. 0 = mati
+input double InpSLU        = 1.5;   // Pengaman B: SL per lapis dalam U (A10 asli 3.0)
+input int    InpRezimHari  = 40;    // Pengaman C: istirahat jika jumlah hasil bayangan N hari aktif terakhir < 0. 0 = mati
 
 input group "=== 10algo: tampilan ==="
 input int    InpPanelX               = 10;        // Posisi panel X
@@ -771,8 +773,17 @@ datetime g_last10d[];
 datetime g_statsAt    = 0;
 bool     g_statsDirty = true;
 double   g_pvSwitch = 0.0, g_pvU = 0.0, g_pvCost = 0.0;
-bool     g_remHit = false;     // v1.09: rem lapis terpicu hari ini
-int      g_remSkip = 0;
+// v1.13 pengaman
+bool     g_candidate = false;   // sakelar nyala & gerbang terbuka hari ini (sebelum pengaman A/C)
+bool     g_skipA = false, g_skipC = false;
+double   g_pre80 = 0.0;
+bool     g_shPending = false;
+datetime g_shDayL = 0;
+double   g_shU = 0.0;
+int      g_shDay[];
+double   g_shVal[];
+const int    SH_SEED_DAY[] = {20260914,20260915,20260916,20260917,20260918,20260921,20260922,20260923,20260924,20260925,20260928,20260929,20260930,20261001,20261002,20261005,20261006,20261007,20261008,20261009,20261012,20261013,20261014,20261015,20261016,20261019,20261020,20261021,20261022,20261023,20261026,20261027,20261028,20261029,20261030,20261102,20261103,20261104,20261105,20261106,20261109,20261110,20261111,20261112,20261113,20261116,20261117,20261118,20261119};
+const double SH_SEED_VAL[] = {-0.809,-3.188,-0.665,3.114,2.261,3.120,0.000,1.061,3.133,0.000,1.439,1.667,0.932,-0.879,-2.175,3.134,0.000,3.147,2.927,-0.341,3.010,3.168,1.383,0.000,3.164,2.483,1.653,-6.225,2.503,0.000,2.299,1.225,2.086,2.982,3.156,3.150,2.962,3.132,1.973,-1.458,3.120,3.119,-2.820,0.000,0.385,3.138,2.896,-1.545,2.964};
 int      g_pvN = 0;
 bool     g_pvOK = false;
 datetime g_pvAt = 0;
@@ -908,13 +919,13 @@ double ValuePerPrice()
    return (tv > 0.0 && ts > 0.0 ? tv / ts : SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE));
   }
 
-// v1.09: lot dari saldo & U (compounding + ikut volatilitas). 1U per lapis = InpRisikoPerU % saldo.
+// v1.09: lot dari saldo & U (compounding + ikut volatilitas). 1U per lapis = InpRisiko % saldo.
 double RiskLots(double u)
   {
-   if(InpRisikoPerU <= 0.0 || u <= 0.0) return g_lots;
+   if(InpRisiko <= 0.0 || u <= 0.0) return g_lots;
    double vpp = ValuePerPrice();
    if(vpp <= 0.0) return g_lots;
-   double raw = InpRisikoPerU / 100.0 * AccountInfoDouble(ACCOUNT_BALANCE) / (u * vpp);
+   double raw = InpRisiko / 100.0 * AccountInfoDouble(ACCOUNT_BALANCE) / (u * vpp);
    double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP), vmin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN), vmax = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    if(step <= 0.0) step = (vmin > 0.0 ? vmin : 0.01);
    double l = MathFloor(raw / step + 1e-9) * step;
@@ -925,28 +936,12 @@ double RiskLots(double u)
    return NormalizeDouble(l, 8);
   }
 
-// v1.09: jumlah lapis 10algo yang sudah tertutup untung (TP) dalam 15 menit terakhir (= sejak 10:20 London hari ini)
-int TpHariIni()
-  {
-   datetime now = TimeCurrent();
-   if(!HistorySelect(now - 900, now + 60)) return 0;
-   int n = 0;
-   for(int i = HistoryDealsTotal() - 1; i >= 0; i--)
-     {
-      ulong tk = HistoryDealGetTicket(i);
-      if(tk == 0 || HistoryDealGetInteger(tk, DEAL_MAGIC) != InpMagic || HistoryDealGetString(tk, DEAL_SYMBOL) != _Symbol) continue;
-      long e = HistoryDealGetInteger(tk, DEAL_ENTRY);
-      if(e != DEAL_ENTRY_OUT && e != DEAL_ENTRY_OUT_BY) continue;
-      if(HistoryDealGetDouble(tk, DEAL_PROFIT) > 0.0) n++;
-     }
-   return n;
-  }
 
 // rugi kalau SEMUA lapis kena SL (3U + spread per lapis)
 double WorstDayLoss(double u, double lots)
   {
    double spr = MathMax(0.0, SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID));
-   return A10_LAYERS * (A10_SL_U * u + spr) * lots * ValuePerPrice();
+   return A10_LAYERS * (InpSLU * u + spr) * lots * ValuePerPrice();
   }
 
 // 10algo v1.08: tanpa penjaga tambahan - perilaku trading sama persis dengan A10 asli.
@@ -1026,7 +1021,7 @@ void Preview()
    DetectCommission();
    g_pvCost = (SymbolInfoDouble(_Symbol, SYMBOL_ASK) - SymbolInfoDouble(_Symbol, SYMBOL_BID)) + g_kom;
    g_pvOK = (g_pvU > 0);
-   if(InpRisikoPerU > 0.0 && g_pvU > 0 && !g_prepared) g_lots = RiskLots(g_pvU);
+   if(InpRisiko > 0.0 && g_pvU > 0 && !g_prepared) g_lots = RiskLots(g_pvU);
   }
 
 datetime LondonToLocal(datetime ldnWall) { return UTCFromLondon(ldnWall) + InpLocalUTCOffset * 3600; }
@@ -1108,7 +1103,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.12", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.13", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1180,7 +1175,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
           StringFormat("spread + komisi harus <= %.4f U. Komisi %s", A10_MAX_COST_U, g_komKnown ? DoubleToString(g_kom, 3) + " per unit" : "belum diketahui (0)")); r += lh;
       PBar("c2bar", X + pad, r + S(2), W - 2 * pad, S(5), uu > 0 ? cu / A10_MAX_COST_U : 0, gate ? C_OK : C_BAD);
       r += S(14);
-      Row("c2r4", "TP / SL per lapis", StringFormat("%.2f / %.2f  (%.1f U / %.1f U)", A10_TP_U * uu, A10_SL_U * uu, A10_TP_U, A10_SL_U), X, W, r, C_DIM); r += lh;
+      Row("c2r4", "TP / SL per lapis", StringFormat("%.2f / %.2f  (%.1f U / %.1f U)", A10_TP_U * uu, InpSLU * uu, A10_TP_U, InpSLU), X, W, r, C_DIM); r += lh;
      }
    else
      {
@@ -1199,10 +1194,12 @@ void DrawPanel(datetime ldn, bool ldnOK)
    r = cy + S(26);
    double bal = AccountInfoDouble(ACCOUNT_BALANCE), eq = AccountInfoDouble(ACCOUNT_EQUITY);
    Row("c3r1", "Lot per lapis", StringFormat("%.2f x %d lapis  (%s)", g_lots, A10_LAYERS,
-       InpRisikoPerU > 0.0 ? StringFormat("1U = %.2f%% saldo, ikut saldo & U", InpRisikoPerU) : "tetap"), X, W, r, C_TXT,
-       InpRisikoPerU > 0.0 ? "lot = risiko% x saldo / (U x nilai per lot), dihitung ulang tiap 10:20 London" : "\n"); r += lh;
-   Row("c3r0", "Rem lapis", InpRemLapis <= 0 ? "mati" : (g_remHit ? StringFormat("TERPICU hari ini: %d lapis dilewati", g_remSkip)
-       : StringFormat("nyala: tanpa TP sampai lapis %d -> sisa lapis dilewati", InpRemLapis)), X, W, r, g_remHit ? C_WARN : C_DIM); r += lh;
+       InpRisiko > 0.0 ? StringFormat("1U = %.2f%% saldo, ikut saldo & U", InpRisiko) : "tetap"), X, W, r, C_TXT,
+       InpRisiko > 0.0 ? "lot = risiko% x saldo / (U x nilai per lot), dihitung ulang tiap 10:20 London" : "\n"); r += lh;
+   double rz = ShSum(InpRezimHari);
+   Row("c3r0", "Pengaman", StringFormat("lonjakan %s | SL %.1fU | rezim %s %+.1fU", InpLonjakanU > 0 ? (g_prepared && g_candidate ? StringFormat("%+.1fU", g_pre80) : "nyala") : "mati",
+       InpSLU, InpRezimHari <= 0 ? "mati" : (rz < 0 && ArraySize(g_shVal) >= InpRezimHari ? "ISTIRAHAT" : "ok"), rz), X, W, r, (g_skipA || g_skipC) ? C_WARN : C_DIM,
+       StringFormat("A: lewati hari jika naik >= %.1fU sejak 09:00 London | B: SL %.1fU per lapis | C: istirahat jika hasil bayangan %d hari aktif terakhir < 0 (%d catatan)", InpLonjakanU, InpSLU, InpRezimHari, ArraySize(g_shVal))); r += lh;
    if(uu > 0 && bal > 0)
      {
       double w = WorstDayLoss(uu, g_lots);
@@ -1274,7 +1271,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.12", true);
+   JAdd(s, "version", "1.13", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1290,15 +1287,21 @@ void WriteState()
    JAdd(s, "active", g_active ? "true" : "false", false);
    JAdd(s, "layers", IntegerToString(g_layers), false);
    JAdd(s, "lots", DoubleToString(g_lots, 2), false);
-   JAdd(s, "risk_per_u", DoubleToString(InpRisikoPerU, 2), false);
+   JAdd(s, "risk_per_u", DoubleToString(InpRisiko, 2), false);
    JAdd(s, "term_maxbars", IntegerToString(TerminalInfoInteger(TERMINAL_MAXBARS)), false);
    JAdd(s, "m1_bars", IntegerToString(Bars(_Symbol, PERIOD_M1)), false);
    JAdd(s, "m1_first", TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_FIRSTDATE), TIME_DATE), true);
    JAdd(s, "hist_first_terminal", TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_TERMINAL_FIRSTDATE), TIME_DATE), true);
    JAdd(s, "hist_first_server", TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_SERVER_FIRSTDATE), TIME_DATE), true);
-   JAdd(s, "rem_lapis", IntegerToString(InpRemLapis), false);
-   JAdd(s, "rem_hit", g_remHit ? "true" : "false", false);
-   JAdd(s, "rem_skip", IntegerToString(g_remSkip), false);
+   JAdd(s, "lonjakan_u", DoubleToString(InpLonjakanU, 2), false);
+   JAdd(s, "sl_u", DoubleToString(InpSLU, 2), false);
+   JAdd(s, "rezim_hari", IntegerToString(InpRezimHari), false);
+   JAdd(s, "rezim_sum", DoubleToString(ShSum(InpRezimHari), 3), false);
+   JAdd(s, "shadow_n", IntegerToString(ArraySize(g_shVal)), false);
+   JAdd(s, "shadow_last", ArraySize(g_shVal) > 0 ? StringFormat("%d:%.3f", g_shDay[ArraySize(g_shDay) - 1], g_shVal[ArraySize(g_shVal) - 1]) : "", true);
+   JAdd(s, "pre80", DoubleToString(g_pre80, 3), false);
+   JAdd(s, "skip_a", g_skipA ? "true" : "false", false);
+   JAdd(s, "skip_c", g_skipC ? "true" : "false", false);
    JAdd(s, "switch", DoubleToString(g_prepared ? g_switch : g_pvSwitch, 4), false);
    JAdd(s, "switch_n", IntegerToString(g_prepared ? g_switchN : g_pvN), false);
    JAdd(s, "u", DoubleToString(g_prepared ? g_u : g_pvU, 4), false);
@@ -1584,8 +1587,97 @@ void HistExportCheck()
    g_expId = "";
   }
 
+// v1.13: catatan hasil "bayangan" A10 + pengaman A/B per hari kandidat (untuk pengaman C)
+double ShSum(int n)
+  {
+   int k = ArraySize(g_shVal);
+   if(n <= 0 || k == 0) return 0.0;
+   double t = 0.0;
+   for(int i = MathMax(0, k - n); i < k; i++) t += g_shVal[i];
+   return t;
+  }
+
+void ShAdd(int ymd, double v, bool persist)
+  {
+   int k = ArraySize(g_shDay);
+   for(int i = 0; i < k; i++) if(g_shDay[i] == ymd) { g_shVal[i] = v; return; }
+   ArrayResize(g_shDay, k + 1); ArrayResize(g_shVal, k + 1);
+   int j = k;
+   while(j > 0 && g_shDay[j - 1] > ymd) { g_shDay[j] = g_shDay[j - 1]; g_shVal[j] = g_shVal[j - 1]; j--; }
+   g_shDay[j] = ymd; g_shVal[j] = v;
+   if(persist)
+     {
+      int h = FileOpen("10algo_shadow_" + IntegerToString(InpMagic) + ".csv", FILE_READ | FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_READ);
+      if(h != INVALID_HANDLE) { FileSeek(h, 0, SEEK_END); FileWriteString(h, StringFormat("%d,%.4f\r\n", ymd, v)); FileClose(h); }
+     }
+  }
+
+void ShLoad()
+  {
+   ArrayResize(g_shDay, 0); ArrayResize(g_shVal, 0);
+   for(int i = 0; i < ArraySize(SH_SEED_DAY); i++) ShAdd(SH_SEED_DAY[i], SH_SEED_VAL[i], false);
+   string fn = "10algo_shadow_" + IntegerToString(InpMagic) + ".csv";
+   if(!FileIsExist(fn)) return;
+   int h = FileOpen(fn, FILE_READ | FILE_TXT | FILE_ANSI | FILE_SHARE_READ | FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE) return;
+   while(!FileIsEnding(h))
+     {
+      string ln = FileReadString(h);
+      string p[];
+      if(StringSplit(ln, ',', p) == 2) ShAdd((int)StringToInteger(p[0]), StringToDouble(p[1]), false);
+     }
+   FileClose(h);
+  }
+
+// hasil hari ini dalam U kalau 10 lapis dibuka dengan aturan A10 + SL InpSLU (bar M1 bid + spread bar + komisi)
+bool ShadowResult(datetime londonDay, double u20, double &res)
+  {
+   double o[12], hi[12], lo[12], sp[12], uk[10];
+   for(int m = 0; m < 12; m++)
+     {
+      datetime t;
+      if(!LondonToServer(londonDay + 10 * 3600 + (20 + m) * 60, t)) return false;
+      int i = iBarShift(_Symbol, PERIOD_M1, t, true);
+      if(i < 0) return false;
+      o[m] = iOpen(_Symbol, PERIOD_M1, i); hi[m] = iHigh(_Symbol, PERIOD_M1, i); lo[m] = iLow(_Symbol, PERIOD_M1, i);
+      sp[m] = (double)iSpread(_Symbol, PERIOD_M1, i) * _Point;
+      if(m < 10) { uk[m] = CalcU(t); if(uk[m] <= 0.0) return false; }
+     }
+   res = 0.0;
+   for(int k = 0; k < 10; k++)
+     {
+      double tp = o[k] - A10_TP_U * uk[k] - g_kom, sl = o[k] + InpSLU * uk[k] - g_kom, r = 0.0;
+      bool done = false;
+      for(int m = k; m < 11 && !done; m++)
+        {
+         if(hi[m] + sp[m] >= sl) { r = (o[k] - sl) / u20; done = true; }
+         else if(lo[m] + sp[m] <= tp) { r = (o[k] - tp) / u20; done = true; }
+        }
+      if(!done) r = (o[k] - (o[11] + sp[11]) - g_kom) / u20;
+      res += r;
+     }
+   return true;
+  }
+
+void ShadowCheck()
+  {
+   if(!g_shPending || MQLInfoInteger(MQL_TESTER) != 0) return;
+   datetime ldn;
+   if(!ServerToLondon(TimeCurrent(), ldn)) return;
+   if(ldn < g_shDayL + 10 * 3600 + 33 * 60) return;
+   g_shPending = false;
+   MqlDateTime d; TimeToStruct(g_shDayL, d);
+   int ymd = d.year * 10000 + d.mon * 100 + d.day;
+   double v = 0.0;
+   if(!g_skipA && !ShadowResult(g_shDayL, g_shU, v)) { Print("10algo: hasil bayangan hari ini gagal dihitung (bar M1 tidak lengkap)"); return; }
+   ShAdd(ymd, v, true);
+   PrintFormat("10algo: hasil bayangan %d = %+.3f U%s | jumlah %d hari aktif terakhir = %+.2f U (%s)", ymd, v, g_skipA ? " (dilewati pengaman A)" : "",
+               InpRezimHari, ShSum(InpRezimHari), ShSum(InpRezimHari) < 0 ? "pengaman C: ISTIRAHAT besok" : "boleh trading");
+  }
+
 void Housekeeping()
   {
+   ShadowCheck();
    HistExportCheck();
    ExportHistory();
    if(g_statsDirty || TimeCurrent() - g_statsAt >= 30) ComputeStats();
@@ -1692,11 +1784,34 @@ void Prepare(datetime nowServer, datetime londonDay)
    trade.SetDeviationInPoints((ulong)MathMax(10.0, MathRound(0.05 * u / _Point)));
    g_active = (nyala && gerbang);
    g_dayNote = (g_active ? "AKTIF" : (!nyala ? "tidak trade: sakelar mati" : "tidak trade: gerbang biaya tertutup"));
-   g_remHit = false; g_remSkip = 0;
-   if(InpRisikoPerU > 0.0)
+   g_candidate = g_active; g_skipA = false; g_skipC = false; g_pre80 = 0.0;
+   if(g_candidate)
+     {
+      g_shPending = true; g_shDayL = londonDay; g_shU = u;
+      datetime t9;
+      if(LondonToServer(londonDay + 9 * 3600, t9))
+        {
+         int i9 = iBarShift(_Symbol, PERIOD_M1, t9, false);
+         if(i9 >= 0) g_pre80 = (SymbolInfoDouble(_Symbol, SYMBOL_BID) - iOpen(_Symbol, PERIOD_M1, i9)) / u;
+        }
+      if(InpLonjakanU > 0.0 && g_pre80 >= InpLonjakanU)
+        {
+         g_skipA = true; g_active = false;
+         g_dayNote = StringFormat("tidak trade: PENGAMAN A - emas sudah naik %.1f U sejak 09:00 London (batas %.1f U)", g_pre80, InpLonjakanU);
+         Print("10algo: ", g_dayNote);
+        }
+      double rz = ShSum(InpRezimHari);
+      if(!g_skipA && InpRezimHari > 0 && ArraySize(g_shVal) >= InpRezimHari && rz < 0.0)
+        {
+         g_skipC = true; g_active = false;
+         g_dayNote = StringFormat("tidak trade: PENGAMAN C - istirahat, hasil bayangan %d hari aktif terakhir %+.2f U", InpRezimHari, rz);
+         Print("10algo: ", g_dayNote);
+        }
+     }
+   if(InpRisiko > 0.0)
      {
       g_lots = RiskLots(u);
-      PrintFormat("10algo: lot hari ini %.2f per lapis = %.2f%% x saldo %s / (U %.3f x %.2f per lot)", g_lots, InpRisikoPerU,
+      PrintFormat("10algo: lot hari ini %.2f per lapis = %.2f%% x saldo %s / (U %.3f x %.2f per lot)", g_lots, InpRisiko,
                   Usd(AccountInfoDouble(ACCOUNT_BALANCE)), u, ValuePerPrice());
      }
    g_guardNote = "";
@@ -1780,14 +1895,15 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.12 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | rem lapis %s", _Symbol,
+      PrintFormat("10algo v1.13 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | pengaman %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "",
-                  InpRisikoPerU > 0.0 ? StringFormat("dari risiko %.2f%% saldo per 1U (dihitung tiap 10:20 London)", InpRisikoPerU) : StringFormat("%.2f per lapis (tetap)", g_lots),
+                  InpRisiko > 0.0 ? StringFormat("dari risiko %.2f%% saldo per 1U (dihitung tiap 10:20 London)", InpRisiko) : StringFormat("%.2f per lapis (tetap)", g_lots),
                   InpLotLapis, vstep,
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER),
-                  InpRemLapis > 0 ? StringFormat("nyala (tanpa TP sampai lapis %d -> sisa dilewati)", InpRemLapis) : "mati");
+                  StringFormat("A lonjakan %.1fU, B SL %.1fU, C rezim %d hari (%d catatan, jumlah %+.2fU)", InpLonjakanU, InpSLU, InpRezimHari, ArraySize(g_shVal), ShSum(InpRezimHari)));
    ArrayFree(g_rDay); ArrayFree(g_rVal);
    RLoad();
+   ShLoad();
    ReadClock();
    ObjectsDeleteAll(0, g_pfx);                          // sisa panel lama / dari template -> gambar ulang dengan urutan benar
    g_sc = (InpPanelScale > 0.0 ? InpPanelScale : MathMax(1.0, TerminalInfoInteger(TERMINAL_SCREEN_DPI) / 96.0));
@@ -1855,7 +1971,7 @@ void OnTick()
    int mnt = L.hour * 60 + L.min;
    if(ymd != g_ymd)
      {
-      g_ymd = ymd; g_prepared = false; g_active = false; g_layers = 0; g_lastMin = -1; g_tryMin = -1; g_tryCnt = 0; g_dayNote = "menunggu 10:20 London"; g_remHit = false; g_remSkip = 0;
+      g_ymd = ymd; g_prepared = false; g_active = false; g_layers = 0; g_lastMin = -1; g_tryMin = -1; g_tryCnt = 0; g_dayNote = "menunggu 10:20 London"; g_candidate = false; g_skipA = false; g_skipC = false; g_shPending = false;
      }
    if(mnt >= T_TUTUP || mnt < T_MULAI)
      {
@@ -1891,7 +2007,7 @@ void OnTick()
       return;
    int    digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID), ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double sl = NormalizeDouble(bid + A10_SL_U * u - g_kom, digits);
+   double sl = NormalizeDouble(bid + InpSLU * u - g_kom, digits);
    double tp = NormalizeDouble(bid - A10_TP_U * u - g_kom, digits);
    double minD = MinStopDist();
    bool   tpMaya = (minD > 0.0 && ask - tp < minD + _Point);
@@ -1907,14 +2023,6 @@ void OnTick()
    if(SimJadwalMasuk(sl, tp, ket))
       return;
 #endif
-   int kLapis = mnt - T_MULAI;                       // 0 = 10:20, 5 = 10:25 London
-   if(InpRemLapis > 0 && kLapis >= InpRemLapis && TpHariIni() == 0)
-     {
-      if(!g_remHit) Print("10algo: REM - sampai ", ket, " belum ada lapis yang kena TP, lapis berikutnya dilewati selama belum ada TP");
-      g_remHit = true; g_remSkip++;
-      g_dayNote = StringFormat("AKTIF, REM: belum ada TP - lapis %s dilewati (%d lapis terbuka)", ket, g_layers);
-      return;
-     }
    if(g_paused)
      {
       g_dayNote = "AKTIF, tetapi PAUSE dari panel - lapis " + ket + " dilewati";
