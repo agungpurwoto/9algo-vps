@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.11-1",
+  "id": "hist-export-1",
   "target": "10algo",
-  "file": "src/10algo.mq5",
-  "deploy": true,
-  "note": "10algo v1.11: ekspor riwayat panjang atas permintaan (tanpa ubah trading)"
+  "action": "export_history",
+  "from": "2022.05.01",
+  "note": "ekspor riwayat M1 emas (jam lelang pagi & sore) + perak (jam lelang siang) sejak Mei 2022"
 }
