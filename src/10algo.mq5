@@ -1631,8 +1631,11 @@ int OnInit()
      }
    else
       PrintFormat("10algo v1.09 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | rem lapis %s", _Symbol,
-                  g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "", g_lots, InpLotLapis, vstep,
-                  SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER));
+                  g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "",
+                  InpRisikoPerU > 0.0 ? StringFormat("dari risiko %.2f%% saldo per 1U (dihitung tiap 10:20 London)", InpRisikoPerU) : StringFormat("%.2f per lapis (tetap)", g_lots),
+                  InpLotLapis, vstep,
+                  SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER),
+                  InpRemLapis > 0 ? StringFormat("nyala (tanpa TP sampai lapis %d -> sisa dilewati)", InpRemLapis) : "mati");
    ArrayFree(g_rDay); ArrayFree(g_rVal);
    RLoad();
    ReadClock();
