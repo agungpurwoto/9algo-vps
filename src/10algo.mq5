@@ -4,13 +4,13 @@
 //| Tambahan 10algo: panel, tombol, statistik (tanpa penjaga),       |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.05"
+#property version   "1.06"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel"
 
 #include <Trade/Trade.mqh>
 
 input long   InpMagic  = 261114;
-input double InpLotLapis = 0.5;   // Lot per lapis (v1.05: nama input baru supaya nilai lama di template chart tidak terbawa)
+input double InpLotLapis = 0.5;   // Lot per lapis (v1.06: nama input baru supaya nilai lama di template chart tidak terbawa)
 input string InpSymbol = "";
 
 input group "=== 10algo: tampilan ==="
@@ -909,7 +909,7 @@ double WorstDayLoss(double u, double lots)
    return A10_LAYERS * (A10_SL_U * u + spr) * lots * ValuePerPrice();
   }
 
-// 10algo v1.05: tanpa penjaga tambahan - perilaku trading sama persis dengan A10 asli.
+// 10algo v1.06: tanpa penjaga tambahan - perilaku trading sama persis dengan A10 asli.
 // Satu-satunya pengecualian: tombol PAUSE manual di panel.
 string GuardWhy(double u)
   {
@@ -1067,7 +1067,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.05", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.06", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1229,7 +1229,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.03", true);
+   JAdd(s, "version", "1.06", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1254,6 +1254,14 @@ void WriteState()
    JAdd(s, "floating", DoubleToString(FloatingPL(), 2), false);
    JAdd(s, "balance", DoubleToString(AccountInfoDouble(ACCOUNT_BALANCE), 2), false);
    JAdd(s, "equity", DoubleToString(AccountInfoDouble(ACCOUNT_EQUITY), 2), false);
+   JAdd(s, "leverage", IntegerToString(AccountInfoInteger(ACCOUNT_LEVERAGE)), false);
+   JAdd(s, "margin_used", DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN), 2), false);
+   JAdd(s, "margin_call_lvl", DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_SO_CALL), 1), false);
+   JAdd(s, "stopout_lvl", DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_SO_SO), 1), false);
+   JAdd(s, "bid", DoubleToString(SymbolInfoDouble(_Symbol, SYMBOL_BID), 2), false);
+   double m10 = 0.0;
+   if(!OrderCalcMargin(ORDER_TYPE_SELL, _Symbol, g_lots * A10_LAYERS, SymbolInfoDouble(_Symbol, SYMBOL_BID), m10)) m10 = -1;
+   JAdd(s, "margin_10_layers", DoubleToString(m10, 2), false);
    JAdd(s, "pl_today", DoubleToString(g_stToday, 2), false);
    JAdd(s, "pl_week", DoubleToString(g_stWeek, 2), false);
    JAdd(s, "pl_month", DoubleToString(g_stMonth, 2), false);
@@ -1507,7 +1515,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.05 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
+      PrintFormat("10algo v1.06 (A10 v1.23): %s%s, lot %.2f per lapis (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "", g_lots, InpLotLapis, vstep,
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_CONTRACT_SIZE), AccountInfoString(ACCOUNT_CURRENCY), AccountInfoString(ACCOUNT_SERVER));
    ArrayFree(g_rDay); ArrayFree(g_rVal);

@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.05-1",
+  "id": "10algo-1.06-1",
   "target": "10algo",
   "file": "src/10algo.mq5",
   "deploy": true,
-  "note": "10algo v1.05: lot per lapis 0.5 (input baru InpLotLapis)"
+  "note": "10algo v1.06: status JSON tambah leverage & margin (tanpa ubah trading)"
 }
