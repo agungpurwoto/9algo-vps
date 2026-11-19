@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.09-3",
+  "id": "10algo-1.10-1",
   "target": "10algo",
   "file": "src/10algo.mq5",
   "deploy": true,
-  "note": "10algo v1.09: lot dari saldo & U (4.38% per U = lot 1,0 sekarang) + rem lapis 10:25"
+  "note": "10algo v1.10: status JSON tambah diagnosa riwayat (maxbars, tanggal awal riwayat server/terminal) - tanpa ubah trading"
 }

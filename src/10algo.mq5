@@ -4,7 +4,7 @@
 //| Tambahan 10algo: panel, tombol, statistik, lot risiko, rem lapis, |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.09"
+#property version   "1.10"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel"
 
 #include <Trade/Trade.mqh>
@@ -1108,7 +1108,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.09", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.10", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1274,7 +1274,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.09", true);
+   JAdd(s, "version", "1.10", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1291,6 +1291,11 @@ void WriteState()
    JAdd(s, "layers", IntegerToString(g_layers), false);
    JAdd(s, "lots", DoubleToString(g_lots, 2), false);
    JAdd(s, "risk_per_u", DoubleToString(InpRisikoPerU, 2), false);
+   JAdd(s, "term_maxbars", IntegerToString(TerminalInfoInteger(TERMINAL_MAXBARS)), false);
+   JAdd(s, "m1_bars", IntegerToString(Bars(_Symbol, PERIOD_M1)), false);
+   JAdd(s, "m1_first", TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_FIRSTDATE), TIME_DATE), true);
+   JAdd(s, "hist_first_terminal", TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_TERMINAL_FIRSTDATE), TIME_DATE), true);
+   JAdd(s, "hist_first_server", TimeToString((datetime)SeriesInfoInteger(_Symbol, PERIOD_M1, SERIES_SERVER_FIRSTDATE), TIME_DATE), true);
    JAdd(s, "rem_lapis", IntegerToString(InpRemLapis), false);
    JAdd(s, "rem_hit", g_remHit ? "true" : "false", false);
    JAdd(s, "rem_skip", IntegerToString(g_remSkip), false);
@@ -1630,7 +1635,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.09 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | rem lapis %s", _Symbol,
+      PrintFormat("10algo v1.10 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | rem lapis %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "",
                   InpRisikoPerU > 0.0 ? StringFormat("dari risiko %.2f%% saldo per 1U (dihitung tiap 10:20 London)", InpRisikoPerU) : StringFormat("%.2f per lapis (tetap)", g_lots),
                   InpLotLapis, vstep,
