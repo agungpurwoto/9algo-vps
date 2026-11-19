@@ -32,7 +32,7 @@ ALLOW_DEPLOY = bool(CFG.get("allow_deploy", True))
 EA_FILE = CFG.get("ea_file", "9algo.mq5")
 STATE = HERE / "sync_state.json"
 API = f"https://api.github.com/repos/{OWNER}/{REPO}"
-VERSION = "1.8"
+VERSION = "1.9"
 
 
 def log(msg):
@@ -232,6 +232,7 @@ def collect(last_compile):
             day = time.strftime("%Y%m%d")
             t10["experts_log"] = tail(d10 / "MQL5" / "Logs" / f"{day}.log", 150)
             t10["journal"] = tail(d10 / "logs" / f"{day}.log", 60)
+            t10["maxbars"] = terminal_maxbars(d10)
         st["terminal_10algo"] = t10
     except Exception as e:
         st["terminal_10algo"] = {"error": str(e)}
@@ -355,8 +356,82 @@ def restart_terminal(d: Path):
     return "MT5 dibuka ulang"
 
 
+def london_now():
+    """Jam London sekarang (aturan BST: Minggu terakhir Maret 01:00 UTC s/d Minggu terakhir Oktober 01:00 UTC)."""
+    import calendar
+    import datetime as _dt
+    now = _dt.datetime.utcnow()
+
+    def last_sunday(y, m):
+        x = _dt.datetime(y, m, calendar.monthrange(y, m)[1], 1, 0)
+        return x - _dt.timedelta(days=(x.weekday() + 1) % 7)
+    bst = last_sunday(now.year, 3) <= now < last_sunday(now.year, 10)
+    return now + _dt.timedelta(hours=1 if bst else 0)
+
+
+def ten_algo_busy():
+    """Alasan tidak boleh menutup terminal 10algo sekarang (None = aman)."""
+    ln = london_now()
+    m = ln.hour * 60 + ln.minute
+    if ln.weekday() < 5 and 10 * 60 + 5 <= m <= 10 * 60 + 40:
+        return "dekat jendela 10algo (10:05-10:40 London)"
+    for f in glob.glob(str(common_files() / "state_*_10algo_*.json")):
+        try:
+            js = json.loads(read_any(Path(f)))
+            if int(js.get("positions", 0)) > 0:
+                return f"10algo masih punya {js['positions']} posisi terbuka"
+        except Exception:
+            pass
+    return None
+
+
+def terminal_maxbars(d):
+    try:
+        m = re.search(r"(?mi)^MaxBars=(.*)$", read_any(d / "config" / "common.ini"))
+        return m.group(1).strip() if m else None
+    except Exception:
+        return None
+
+
+def set_maxbars(target, value):
+    """v1.9: tutup terminal dengan sopan, ubah Tools > Options > Charts > Max bars in chart, buka lagi."""
+    d = target_info(target)[0]
+    if not d:
+        return {"ok": False, "result": "folder data terminal tidak ditemukan"}
+    inst = Path(T10_INSTALL) if target == "10algo" else \
+        (Path(CFG["mt5_dir"]) if CFG.get("mt5_dir") else Path(read_any(d / "origin.txt").strip().strip("\ufeff")))
+    exe = inst / "terminal64.exe"
+    if not exe.exists():
+        return {"ok": False, "result": "terminal64.exe tidak ditemukan"}
+    busy = ten_algo_busy()
+    if busy:
+        return {"ok": False, "result": "ditunda: " + busy}
+    old = terminal_maxbars(d)
+    ps = ("$p = Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq '%s' }; "
+          "foreach ($x in $p) { [void]$x.CloseMainWindow() }; "
+          "for ($i=0; $i -lt 60 -and ($p | Where-Object { -not $_.HasExited }); $i++) { Start-Sleep 1; $p | ForEach-Object { $_.Refresh() } }; "
+          "$p | Where-Object { -not $_.HasExited } | Stop-Process -Force") % str(exe).replace("'", "''")
+    subprocess.run(["powershell", "-NoProfile", "-Command", ps], timeout=120, capture_output=True)
+    time.sleep(3)
+    ini = d / "config" / "common.ini"
+    txt = read_any(ini).replace("\r\n", "\n") if ini.exists() else ""
+    if re.search(r"(?mi)^MaxBars=", txt):
+        txt = re.sub(r"(?mi)^MaxBars=.*$", f"MaxBars={value}", txt)
+    elif "[Charts]" in txt:
+        txt = txt.replace("[Charts]", f"[Charts]\nMaxBars={value}", 1)
+    else:
+        txt = txt.rstrip("\n") + f"\n[Charts]\nMaxBars={value}\n"
+    write_utf16(ini, txt)
+    subprocess.Popen([str(exe)], cwd=str(inst))
+    return {"ok": True, "result": f"MaxBars {old} -> {value}, terminal dibuka ulang", "old": old, "new": str(value)}
+
+
 def handle_request(req):
     target = req.get("target", "9algo")
+    if req.get("action") == "maxbars":
+        r = set_maxbars(target, int(req.get("value", 5000000)))
+        r.update({"id": req["id"], "target": target, "time": time.strftime("%Y-%m-%d %H:%M:%S")})
+        return r
     d, ea_file, me, flag, ci_name = target_info(target)
     if not d:
         return {"id": req["id"], "ok": False, "target": target,
