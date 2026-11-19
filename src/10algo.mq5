@@ -1282,8 +1282,6 @@ void ApplyTheme()
    ChartSetInteger(0, CHART_SHIFT, true);
   }
 
-  }
-
 // 10algo v1.01: dipasang ulang dari VPS (9algo_sync menulis MQL5\Files\10algo_reload.txt) -> EA memuat ulang dirinya
 // lewat template chart. DITUNDA selama ada posisi terbuka atau dalam 10:15-10:35 London, supaya hitungan lapis
 // hari ini tidak ter-reset di tengah jendela lelang.
