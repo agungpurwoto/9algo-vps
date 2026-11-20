@@ -1,7 +1,7 @@
 {
-  "id": "10algo-1.13-1",
+  "id": "10algo-1.14-1",
   "target": "10algo",
   "file": "src/10algo.mq5",
   "deploy": true,
-  "note": "10algo v1.13: risiko 2%/U, pengaman A (lonjakan 3U), B (SL 1,5U), C (rezim 40 hari bayangan), rem dihapus"
+  "note": "10algo v1.14: daftar deal di status 14 hari (untuk evaluasi mingguan) - tanpa ubah trading"
 }

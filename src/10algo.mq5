@@ -4,7 +4,7 @@
 //| Tambahan 10algo: panel, tombol, statistik, lot risiko, rem lapis, |
 //| statistik, garis jendela, status JSON untuk 9algo_sync.          |
 //+------------------------------------------------------------------+
-#property version   "1.13"
+#property version   "1.14"
 #property description "10algo - London Auction XAUUSD (algoritma A10 v1.23) dengan panel"
 
 #include <Trade/Trade.mqh>
@@ -1103,7 +1103,7 @@ void DrawPanel(datetime ldn, bool ldnOK)
    PRect("hdr", X, y, W, S(46), C_BG, C_EDGE);
    PRect("hdr_acc", X, y, S(4), S(46), C_GOLD);
    PText("title", "10algo", X + S(14), y + S(5), 13, C_TXT, true);
-   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.13", X + S(14), y + S(28), 7, C_MUTE);
+   PText("sub", "London Auction  |  " + _Symbol + "  |  v1.14", X + S(14), y + S(28), 7, C_MUTE);
    PRect("pill", X + W - S(122), y + S(13), S(84), S(20), stc);
    PText("pill_t", st, X + W - S(80), y + S(16), 8, clrWhite, true, ANCHOR_UPPER);
    PButton("btn_min", g_mini ? "+" : "-", X + W - S(30), y + S(13), S(20), S(20), C_CARD, C_TXT, g_mini ? "Buka panel" : "Ringkas panel");
@@ -1271,7 +1271,7 @@ void WriteState()
    string st; color c; StatusPill(st, c);
    string s = "{";
    JAdd(s, "ea", "10algo", true);
-   JAdd(s, "version", "1.13", true);
+   JAdd(s, "version", "1.14", true);
    JAdd(s, "algo", "A10 London Auction v1.23", true);
    JAdd(s, "symbol", _Symbol, true);
    JAdd(s, "login", IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), false);
@@ -1328,10 +1328,10 @@ void WriteState()
    // v1.08: deal 10algo 3 hari terakhir (untuk analisis dari luar)
    string dl = "[";
    datetime nw = TimeCurrent();
-   if(HistorySelect(nw - 3 * 86400, nw + 60))
+   if(HistorySelect(nw - 14 * 86400, nw + 60))
      {
       int nd = HistoryDealsTotal(), cnt = 0;
-      for(int i = MathMax(0, nd - 200); i < nd; i++)
+      for(int i = MathMax(0, nd - 600); i < nd; i++)
         {
          ulong tk = HistoryDealGetTicket(i);
          if(tk == 0 || HistoryDealGetInteger(tk, DEAL_MAGIC) != InpMagic || HistoryDealGetString(tk, DEAL_SYMBOL) != _Symbol) continue;
@@ -1895,7 +1895,7 @@ int OnInit()
          Alert("10algo ", _Symbol, ": ", g_fatalMsg);
      }
    else
-      PrintFormat("10algo v1.13 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | pengaman %s", _Symbol,
+      PrintFormat("10algo v1.14 (A10 v1.23): %s%s, lot %s (masukan %.4f; langkah lot %.4f), kontrak %.2f unit per lot, akun %s, server %s | pengaman %s", _Symbol,
                   g_manualSym ? " (nama simbol dari input InpSymbol, pengecekan nama emas dilewati)" : "",
                   InpRisiko > 0.0 ? StringFormat("dari risiko %.2f%% saldo per 1U (dihitung tiap 10:20 London)", InpRisiko) : StringFormat("%.2f per lapis (tetap)", g_lots),
                   InpLotLapis, vstep,
